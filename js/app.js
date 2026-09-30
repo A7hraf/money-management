@@ -10,13 +10,20 @@ const todayStr=()=>ymd(new Date());
 const newId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
-const DOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+// language: English or Arabic (the Arabic words live in js/i18n.js). Day/month names switch in place.
+let LANG='en';
+const MONTHS_EN=MONTHS.slice(), MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const DOW_AR=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'], DOW1_AR=['ح','ن','ث','ر','خ','ج','س'], DOW2_AR=['أحد','اثن','ثلا','أرب','خمي','جمع','سبت'];
+const monS=i=>LANG==='ar'?MONTHS[i]:MONTHS[i].slice(0,3);
+const dowS=(i,n)=>LANG==='ar'?(n===1?DOW1_AR:DOW2_AR)[i]:DOW[i].slice(0,n);
+const dayPl=i=>LANG==='ar'?'أيام '+DOW[i]:DOW[i]+'s';
+const DOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']; const DOW_EN=DOW.slice();
 const round=(n,d)=>Math.round((+n||0)*10**d)/10**d;
 const norm=s=>String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
 const num=v=>{const n=parseFloat(String(v??'').replace(/,/g,'').replace(/[^\d.\-]/g,''));return isFinite(n)?n:0};
 const sum=(a,f=x=>x)=>a.reduce((t,x)=>t+(+f(x)||0),0);
 const dayDiff=(a,b)=>Math.round((pd(b)-pd(a))/864e5);
-const fmtD=(s,o)=>pd(s).toLocaleDateString('en-GB',o);
+const fmtD=(s,o)=>pd(s).toLocaleDateString(LANG==='ar'?'ar-OM-u-nu-latn':'en-GB',o);
 const shortD=s=>fmtD(s,{day:'numeric',month:'short'});
 const clone=o=>JSON.parse(JSON.stringify(o));
 
@@ -59,6 +66,14 @@ function defaultProfile(){
     widgets:Object.fromEntries(WIDGETS.map(w=>[w[0],true]))};
 }
 const KEYWORDS=[
+  // Arabic words people type or see in bank messages
+  ['كرك','food','Tea & karak'],['شاي','food','Tea & karak'],['قهوة','food','Coffee'],['كوفي','food','Coffee'],['مطعم','food','Restaurant'],['بيتزا','food','Pizza'],['برجر','food','Burger'],
+  ['شاورما','food','Shawarma'],['مشاوي','food','Grills'],['برياني','food','Rice & biryani'],['مجبوس','food','Rice & biryani'],['شواء','food','Rice & biryani'],['حلويات','food','Sweets & desserts'],['عصير','food','Juice & drinks'],
+  ['لولو','groceries',''],['كارفور','groceries',''],['نستو','groceries',''],['خضار','groceries','Vegetables'],['فواكه','groceries','Fruits'],['خبز','groceries','Bread & bakery'],['حليب','groceries','Dairy & eggs'],
+  ['بترول','transport','Fuel'],['وقود','transport','Fuel'],['بنزين','transport','Fuel'],['المها','transport','Fuel'],['نفط عمان','transport','Fuel'],['تاكسي','transport','Taxi'],['مواقف','transport','Parking'],
+  ['كهرباء','bills','Electricity'],['نماء','bills','Electricity'],['مياه','bills','Water'],['إنترنت','bills','Internet'],['انترنت','bills','Internet'],['عمانتل','bills','Mobile'],['أوريدو','bills','Mobile'],['اوريدو','bills','Mobile'],['إيجار','bills','Rent'],['ايجار','bills','Rent'],
+  ['صيدلية','health','Pharmacy'],['مستشفى','health','Doctor'],['عيادة','health','Doctor'],['ملابس','shopping','Clothes'],['عطور','shopping','Perfume'],['هدية','family','Gifts'],['صدقة','family','Charity'],['زكاة','family','Zakat'],
+  ['راتب','salary','Monthly salary'],
   ['pizza','food','Pizza'],['domino','food','Pizza'],['papa john','food','Pizza'],['burger','food','Burger'],['mcdonald','food','Burger'],['hardee','food','Burger'],['five guys','food','Burger'],
   ['kfc','food','Chicken'],['broast','food','Chicken'],['biryani','food','Rice & biryani'],['majboos','food','Rice & biryani'],['shuwa','food','Rice & biryani'],['mandi','food','Rice & biryani'],
   ['shawarma','food','Shawarma'],['grill','food','Grills'],['kebab','food','Grills'],['mishkak','food','Grills'],['sandwich','food','Sandwich'],['subway','food','Sandwich'],['salad','food','Salad'],
@@ -357,7 +372,7 @@ function guessAcctFromText(text){
   const n=norm(text);
   const hit=P().accounts.find(a=>n.includes(norm(a.name)));
   if(hit) return hit.id;
-  for(const [w,ty] of [['cash','cash'],['card','card'],['visa','card'],['bank','bank'],['wallet','wallet']]) if(new RegExp('\\b'+w+'\\b').test(n)){const a=P().accounts.find(x=>x.type===ty); if(a) return a.id;}
+  for(const [w,ty] of [['cash','cash'],['card','card'],['visa','card'],['bank','bank'],['wallet','wallet'],['نقد','cash'],['نقدا','cash'],['نقدًا','cash'],['كاش','cash'],['بطاقة','card'],['فيزا','card'],['بنك','bank']]) if(new RegExp('(^|[^\\p{L}])'+w+'([^\\p{L}]|$)','u').test(n)){const a=P().accounts.find(x=>x.type===ty); if(a) return a.id;}
   return null;
 }
 const defaultAcct=()=>{ if(state.ui.acct!=='all'&&acct(state.ui.acct)) return state.ui.acct; const s=P().accounts.find(a=>hasRole(a,'spending')&&!hasRole(a,'savings')); return (s||P().accounts.find(a=>!hasRole(a,'savings'))||P().accounts[0]).id; };
@@ -368,9 +383,9 @@ function parseQuick(text){
   const m=rest.match(/(\d+(?:[.,]\d+)?)/); const amount=m?num(m[1].replace(',','.')):0;
   if(m) rest=rest.replace(m[0],' ');
   const accountId=guessAcctFromText(rest);
-  if(accountId){ const a=acct(accountId); rest=rest.replace(new RegExp(a.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'),' ').replace(/\b(cash|card|visa|bank|wallet)\b/i,' '); }
+  if(accountId){ const a=acct(accountId); rest=rest.replace(new RegExp(a.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'),' ').replace(/\b(cash|card|visa|bank|wallet)\b/i,' ').replace(/(^|\s)(نقدًا|نقدا|نقد|كاش|بطاقة|فيزا|بنك)(?=\s|$)/u,' '); }
   const desc=rest.replace(/\s+/g,' ').trim();
-  const isInc=/^(\+|income|got|received)/i.test(text.trim());
+  const isInc=/^(\+|income|got|received|دخل|راتب|استلمت)/i.test(text.trim());
   const dd=desc.replace(/^\+\s*/,''); return {desc:dd.charAt(0).toUpperCase()+dd.slice(1),amount,accountId:accountId||defaultAcct(),tags,type:isInc?'income':'expense',guess:guessCategory(desc,isInc?'income':'expense')};
 }
 function quickSuggestions(){
@@ -385,6 +400,58 @@ function quickSuggestions(){
   const auto=Object.values(counts).filter(c=>c.n>=2&&!pk.has(norm(c.label)+'|'+c.amount)).sort((a,b)=>b.n-a.n).slice(0,Math.max(0,8-pinned.length));
   return [...pinned,...auto];
 }
+/* ================= Arabic =================
+   The screens are written in English. In Arabic mode every text the app shows is looked up in
+   the dictionary in js/i18n.js as it appears: exact phrases, phrases with numbers ({#}), a few
+   phrases around names, and "a · b" style lists piece by piece. Numbers stay in Western digits. */
+const AR=window.MASROOF_AR||{dict:{},patterns:[]};
+const AR_MON='يناير|فبراير|مارس|أبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر', AR_DAY='الأحد|الاثنين|الثلاثاء|الأربعاء|الخميس|الجمعة|السبت';
+const TOK_BASE=`(?:(?:${AR_DAY})،?\\s)?\\d{1,2}\\s(?:${AR_MON})(?:\\s\\d{4})?|(?:${AR_MON})(?:\\s\\d{4})?|[−+-]?\\d(?:[\\d,]*\\d)?(?:\\.\\d+)?%?|•••`;
+let tokRe=null, tokCur=null;
+function tokenRe(){ const c=state.profile&&state.profile.currency||'OMR'; if(!tokRe||tokCur!==c){ tokCur=c; tokRe=new RegExp(`\\b${c.replace(/[^A-Z]/g,'')}\\b|${TOK_BASE}`,'g'); } tokRe.lastIndex=0; return tokRe; }
+const arTok=t=>t==='OMR'?'ر.ع':t;
+function trFill(tpl,toks){ let i=0; return tpl.replace(/\{(#|\d)\}/g,(_,k)=>arTok(k==='#'?(toks[i++]??''):(toks[+k-1]??''))); }
+function trS(s,depth=0){
+  if(s&&/^\s*→\s*$/.test(s)) return s.replace('→','←'); // arrows between steps point the reading way
+  if(!s||depth>4||!/[A-Za-z]/.test(s)) return s;
+  const lead=s.match(/^\s*/)[0], tail=s.match(/\s*$/)[0], t=s.trim(), D=AR.dict; if(!t) return s;
+  const wrap=x=>lead+x+tail;
+  if(D[t]!=null) return wrap(D[t]);
+  const toks=[]; const key=t.replace(tokenRe(),m=>{toks.push(m);return '{#}';});
+  if(toks.length&&D[key]!=null) return wrap(trFill(D[key],toks));
+  for(const [re,out] of AR.patterns){ const m=t.match(re); if(m) return wrap(out.replace(/\$(\d)/g,(_,i)=>trS(m[+i]||'',depth+1))); }
+  let m=t.match(/^([^A-Za-z0-9{(“"\s−+-]+)\s*(.+)$/u); if(m){ const r=trS(m[2],depth+1); if(r!==m[2]) return wrap(m[1]+(/\s$/.test(m[1])||!/\S/.test(m[1])?'':' ')+r); }
+  m=t.match(/^(.*[A-Za-z.)?”"])\s*([^A-Za-z0-9.)?”"]+)$/u); if(m){ const r=trS(m[1],depth+1); if(r!==m[1]) return wrap(r+' '+m[2]); }
+  for(const sep of [' · ',' — ',' → ','. ',': ',' – ',', ']){ if(!t.includes(sep)) continue;
+    const parts=t.split(sep); const out=parts.map(p=>trS(p,depth+1));
+    if(out.some((x,i)=>x!==parts[i])) return wrap(out.join(sep===' → '?' ← ':sep===', '?'، ':sep)); }
+  m=t.match(/^(.+?)\s+(\{#\}|[−+-]?\d[\d,.]*%?)$/); if(m){ const r=trS(m[1],depth+1); if(r!==m[1]) return wrap(r+' '+m[2]); }
+  return s;
+}
+const trOrig=new WeakMap();
+function trText(n){ const p=n.parentElement; if(!p||p.closest('[data-notr],script,style,textarea')) return; if(p.tagName==='OPTION'&&!p.hasAttribute('value')) return;
+  let v=trS(n.data);
+  // keep "−12.500" and "+3.100" reading left to right inside Arabic text (sign before the number)
+  if(/(^|[^\w])[−+]\s?\d/.test(v)&&!v.includes('\u2066')) v=v.replace(/(^|[^\w])([−+]\s?\d[\d,]*(?:\.\d+)?%?)/g,'$1\u2066$2\u2069');
+  if(v!==n.data){ if(!trOrig.has(n)) trOrig.set(n,n.data); n.data=v; } }
+function trAttrs(el){ if(el.closest('[data-notr]')) return; for(const a of ['placeholder','aria-label','title']){ const v=el.getAttribute(a); if(v&&/[A-Za-z]/.test(v)){ const t=trS(v); if(t!==v){ el.setAttribute('data-en-'+a,v); el.setAttribute(a,t); } } } }
+function trTree(root){ if(LANG!=='ar'||!root) return;
+  if(root.nodeType===3){ trText(root); return; } if(root.nodeType!==1) return;
+  if(root.matches('[placeholder],[aria-label],[title]')) trAttrs(root);
+  root.querySelectorAll('[placeholder],[aria-label],[title]').forEach(trAttrs);
+  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT); let n; while((n=w.nextNode())) trText(n); }
+const trObs=new MutationObserver(ms=>{ if(LANG!=='ar') return; for(const m of ms){ if(m.type==='characterData') trText(m.target); else if(m.type==='attributes') trAttrs(m.target); else m.addedNodes.forEach(trTree); } });
+function setLang(l,rerender){
+  LANG=l==='ar'?'ar':'en'; const H=document.documentElement; H.lang=LANG; H.dir=LANG==='ar'?'rtl':'ltr';
+  MONTHS.splice(0,12,...(LANG==='ar'?MONTHS_AR:MONTHS_EN)); DOW.splice(0,7,...(LANG==='ar'?DOW_AR:DOW_EN));
+  trObs.disconnect();
+  if(LANG==='ar'){ trTree(document.body); trObs.observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['placeholder','aria-label','title']}); }
+  else { const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT); let n; while((n=w.nextNode())) if(trOrig.has(n)){ n.data=trOrig.get(n); trOrig.delete(n); }
+    document.querySelectorAll('[data-en-placeholder],[data-en-aria-label],[data-en-title]').forEach(el=>{ for(const a of ['placeholder','aria-label','title']) if(el.hasAttribute('data-en-'+a)){ el.setAttribute(a,el.getAttribute('data-en-'+a)); el.removeAttribute('data-en-'+a); } }); }
+  if(rerender){ if(state.ready) render(); else if(!$('#lock').hidden) showLock(lockMode); }
+}
+const tr=s=>LANG==='ar'?trS(s):s;
+
 /* ================= rendering ================= */
 const svgI=(d,w=2)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICON={
@@ -524,12 +591,12 @@ function trendBuckets(u){
   const [a,b]=periodRange(u.period,u.anchor); const out=[];
   if(u.period==='year'){ const y=a.slice(0,4); const s=summarize(filterAcct(txBetween(a,b))); const byM={};
     for(const [d,v] of Object.entries(s.byDate)){const m=+d.slice(5,7);byM[m]=(byM[m]||0)+v}
-    for(let m=1;m<=12;m++){const k=`${y}-${pad(m)}`; out.push({key:k,label:MONTHS[m-1].slice(0,3),full:MONTHS[m-1]+' '+y,value:byM[m]||0,cur:k===todayStr().slice(0,7)});}
+    for(let m=1;m<=12;m++){const k=`${y}-${pad(m)}`; out.push({key:k,label:monS(m-1),full:MONTHS[m-1]+' '+y,value:byM[m]||0,cur:k===todayStr().slice(0,7)});}
     return out; }
   const start=u.period==='day'?ymd(addDays(pd(a),-13)):a; const s=summarize(filterAcct(txBetween(start,b)));
   const showLimit=P().limits.mode!=='off'&&u.period!=='year';
   for(let d=pd(start);ymd(d)<=b;d=addDays(d,1)){const k=ymd(d);
-    out.push({key:k,label:u.period==='month'?String(d.getDate()):DOW[d.getDay()].slice(0,2),full:fmtD(k,{weekday:'short',day:'numeric',month:'short'}),value:s.byDate[k]||0,cur:(u.period==='day'&&k===u.anchor)||k===todayStr(),limit:showLimit&&k<=todayStr()?limitFor(k):null});}
+    out.push({key:k,label:u.period==='month'?String(d.getDate()):dowS(d.getDay(),2),full:fmtD(k,{weekday:'short',day:'numeric',month:'short'}),value:s.byDate[k]||0,cur:(u.period==='day'&&k===u.anchor)||k===todayStr(),limit:showLimit&&k<=todayStr()?limitFor(k):null});}
   return out;
 }
 function insightsHTML(u,s,ps,a,b,asList){
@@ -547,7 +614,7 @@ function insightsHTML(u,s,ps,a,b,asList){
   if(fromSav>0) li.push(['⚠️',`<b>${money(fromSav)}</b> was spent straight from savings (${esc([...new Set(s.exp.filter(t=>hasRole(acct(t.accountId),'savings')).map(t=>acctName(t.accountId)))].join(', '))})`]);
   if(s.tax>0) li.push(['🏛️',`Taxes & service charges: <b>${money(s.tax)}</b> (${(s.tax/s.spent*100).toFixed(1)}% of spending)`]);
   if(s.shared>0) li.push(['👥',`Shared bills: your part was <b>${money(s.shared)}</b> of ${money(s.sharedTotal)}`]);
-  if(u.period!=='day'&&s.exp.length>3){const dw=[0,0,0,0,0,0,0]; for(const t of s.exp) dw[pd(t.date).getDay()]+=myShare(t); li.push(['📆',`You spend most on <b>${DOW[dw.indexOf(Math.max(...dw))]}s</b>`]);}
+  if(u.period!=='day'&&s.exp.length>3){const dw=[0,0,0,0,0,0,0]; for(const t of s.exp) dw[pd(t.date).getDay()]+=myShare(t); li.push(['📆',`You spend most on <b>${dayPl(dw.indexOf(Math.max(...dw)))}</b>`]);}
   let best=null; for(const [id,v] of Object.entries(s.byCat)){const p=(ps.byCat[id]||{}).total||0;const d=v.total-p; if(p>0&&(!best||Math.abs(d)>Math.abs(best.d))) best={id,d}}
   if(best&&Math.abs(best.d)>0) li.push([best.d>0?'📈':'📉',`<b>${esc(cat(best.id).name)}</b> is ${best.d>0?'up':'down'} ${money(Math.abs(best.d))} vs ${PREV_WORD[u.period]}`]);
   if(s.income>0){const r=Math.round((s.saved+s.invested)/s.income*100); li.push(['🏦',r>0?`You put <b>${r}%</b> of income into savings and investments`:`Nothing saved yet this period — a transfer to a Savings account counts`]);}
@@ -612,7 +679,7 @@ function upcomingHTML(){
   const loans=P().people.map(x=>({x,d:personDue(x.id)})).filter(o=>o.d&&o.d.date<=lim).sort((a,b)=>a.d.date<b.d.date?-1:1);
   const cards=P().accounts.map(a=>({a,c:cardStatus(a)})).filter(o=>o.c&&o.c.due>0&&o.c.dueDate<=lim);
   if(!up.length&&!loans.length&&!cards.length) return '';
-  const dchip=ds=>`<span class="dchip"><b>${pd(ds).getDate()}</b>${MONTHS[pd(ds).getMonth()].slice(0,3)}</span>`;
+  const dchip=ds=>`<span class="dchip"><b>${pd(ds).getDate()}</b>${monS(pd(ds).getMonth())}</span>`;
   return `<section class="panel"><h2>Coming up</h2><div class="rows">${cards.map(({a,c})=>`<button class="rw" data-act="accView" data-v="${esc(a.id)}">${dchip(c.dueDate)}<span class="rwl">Pay ${esc(a.name)}${c.late?' <span class="pill late">overdue</span>':''}</span><b class="amt expense">${money(c.due)}</b></button>`).join('')}${loans.map(({x,d})=>`<button class="rw" data-act="person" data-v="${esc(x.id)}">${dchip(d.date)}<span class="rwl">${d.bal>0?`${esc(x.name)} pays you back`:`Pay back ${esc(x.name)}`}${d.late?' <span class="pill late">overdue</span>':''}</span><b class="amt ${d.bal>0?'income':'expense'}">${d.bal>0?'+':''}${money(Math.abs(d.bal))}</b></button>`).join('')}${up.map(r=>`<div class="rw">${dchip(r.next)}<span class="rwl">${esc(recLabel(r))}</span><b class="amt ${r.type}">${r.type==='income'?'+':''}${money(r.amount)}</b></div>`).join('')}</div>
     ${up.some(r=>r.type!=='income')?`<p class="hint" style="margin-top:8px">Total going out: ${money(sum(up.filter(r=>r.type!=='income'),r=>r.amount))}</p>`:''}</section>`;
 }
@@ -624,7 +691,7 @@ function viewTxShell(){
   const acts=`${canImages?`<button class="round" data-act="scanNew" aria-label="Scan receipt">${ICON.camera}</button>`:''}<button class="round" data-act="import" aria-label="Import bank messages">${ICON.inbox}</button>${downloadsNs?`<button class="round" data-act="export" aria-label="Export CSV">${ICON.down}</button>`:''}`;
   const months=[]; for(let i=11;i>=0;i--){const dd=new Date(new Date().getFullYear(),new Date().getMonth()-i,1); months.push(`${dd.getFullYear()}-${pad(dd.getMonth()+1)}`);}
   if(!months.includes(u.txMonth)) months.unshift(u.txMonth);
-  return pageHead('Activity','',acts)+`<div class="hscroll months" id="monthRow">${months.map(k=>{const [yy,mm]=k.split('-').map(Number);return `<button class="chip" data-act="pickMonth" data-v="${k}" aria-pressed="${u.txMonth===k}">${MONTHS[mm-1].slice(0,3)}${yy!==new Date().getFullYear()?' '+yy:''}</button>`}).join('')}</div>
+  return pageHead('Activity','',acts)+`<div class="hscroll months" id="monthRow">${months.map(k=>{const [yy,mm]=k.split('-').map(Number);return `<button class="chip" data-act="pickMonth" data-v="${k}" aria-pressed="${u.txMonth===k}">${monS(mm-1)}${yy!==new Date().getFullYear()?' '+yy:''}</button>`}).join('')}</div>
   <div class="bar"><label class="searchbox">${ICON.search}<input type="search" placeholder="Search pizza, Lulu, Ali, #trip" value="${esc(u.txQ)}" data-input="txQ" aria-label="Search"></label></div>
   <div class="filters">
     <button class="chip calchip" data-act="txCal" aria-pressed="${!!u.txCal}" aria-label="Calendar view">📅</button>
@@ -660,7 +727,7 @@ function calendarHTML(month,byDate,sel){
   for(let d=1;d<=n;d++){ const k=`${month}-${pad(d)}`, v=byDate[k]||0, lim=limitFor(k);
     const over=lim!=null&&v>0&&countedOn(k)>lim; const heat=v>0?(.14+.66*Math.sqrt(v/max)).toFixed(2):0;
     cells+=`<button class="cd${k===t?' today':''}${k===sel?' sel':''}${over?' over':''}${k>t?' future':''}" data-act="txDay" data-v="${k}" style="--h:${heat}" aria-pressed="${k===sel}" aria-label="${fmtD(k,{day:'numeric',month:'long'})}: ${v?money(v)+' spent':'nothing spent'}"><b>${d}</b>${v?`<small>${compact(v)}</small>`:''}</button>`; }
-  const dow=[...Array(7)].map((_,i)=>DOW[(ws+i)%7].slice(0,1));
+  const dow=[...Array(7)].map((_,i)=>dowS((ws+i)%7,1));
   const total=sum(vals), days=vals.filter(v=>v>0).length;
   return `<section class="panel cal"><div class="cal-g cal-h">${dow.map(x=>`<span>${x}</span>`).join('')}</div><div class="cal-g">${cells}</div>
     <div class="cal-f"><span>${days} spending day${days===1?'':'s'} · ${n-days} without</span><span>avg ${money(days?total/days:0)} / day</span></div></section>`;
@@ -763,7 +830,7 @@ function buildIcs(items){
   const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
   const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Masroof//Reminders//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:Masroof'];
   for(const e of items){ const d=e.date.replace(/-/g,'');
-    L.push('BEGIN:VEVENT','UID:'+e.uid+'@masroof','DTSTAMP:'+stamp,'SUMMARY:'+esc_(e.title),'DESCRIPTION:'+esc_(e.note||''));
+    L.push('BEGIN:VEVENT','UID:'+e.uid+'@masroof','DTSTAMP:'+stamp,'SUMMARY:'+esc_(tr(e.title)),'DESCRIPTION:'+esc_(tr(e.note||'')));
     if(e.time){ const [h,m]=e.time.split(':'); L.push(`DTSTART:${d}T${h}${m}00`,`DURATION:PT5M`); } else L.push('DTSTART;VALUE=DATE:'+d,'DTEND;VALUE=DATE:'+ymd(addDays(pd(e.date),1)).replace(/-/g,''),'TRANSP:TRANSPARENT');
     if(e.rrule) L.push('RRULE:'+e.rrule);
     // alerts: at the time for timed events; 9:00 the day before and 9:00 on the day for all-day ones
@@ -780,7 +847,7 @@ function openReminders(){
     ${row('loans','Loan pay-back dates','From Friends')}
     ${row('sms','Daily “import bank SMS”',`<select class="sel" data-rem="smsTime" style="padding:4px 8px;font-size:13px">${['08:00','12:00','18:00','20:00','21:00','22:00'].map(t=>`<option${o.smsTime===t?' selected':''}>${t}</option>`).join('')}</select> every day`)}
     <div class="rem-list">${items.length?items.slice(0,8).map(e=>`<div><span>${esc(e.title)}</span><span class="muted">${e.time?'daily '+e.time:shortD(e.date)+(e.rrule?' ↻':'')}</span></div>`).join('')+(items.length>8?`<div class="muted">+${items.length-8} more</div>`:''):'<p class="hint">Nothing to remind you about yet.</p>'}</div>
-    <p class="hint">Tap <b>Add to Calendar</b>, then <b>Add All</b>. If you see a share sheet instead, choose <b>Save to Files</b>, open the file and tap <b>Add All</b>. Do it again after your bills change — pick the same “Masroof” calendar.</p>`,
+    <p class="hint">Tap <b>Add to Calendar</b>, then <b data-notr>Add All</b>. If you see a share sheet instead, choose <b data-notr>Save to Files</b>, open the file and tap <b data-notr>Add All</b>. Do it again after your bills change — pick the same “Masroof” calendar.</p>`,
     `<span class="spacer"></span><button class="btn" data-act="close">Close</button><button class="btn primary" data-act="remMake"${items.length?'':' disabled'}>Add to Calendar</button>`);
 }
 function makeReminderFile(){
@@ -791,18 +858,18 @@ function makeReminderFile(){
   P().remind.last=Date.now(); persist('profile');
 }
 function openSmsGuide(){
-  const step=(n,h,b)=>`<li><span class="stepn">${n}</span><div><b>${h}</b><p>${b}</p></div></li>`;
-  const code=t=>`<button class="codechip" data-act="smsCopy" data-v="${esc(t)}" dir="auto">${esc(t)}<span>copy</span></button>`;
-  dlg('Save bank SMS automatically',`<p class="hint" style="margin-top:0">Apple doesn’t let any app read your messages. But your iPhone’s <b>Shortcuts</b> app can save each bank SMS into a file the moment it arrives — even when Masroof is closed. Masroof then imports them in one tap. Nothing leaves your iPhone and iCloud.</p>
+  const step=(n,h,b)=>`<li><span class="stepn">${n}</span><div><b>${h}</b><p>${b.replace(/<b>/g,'<b data-notr>')}</p></div></li>`; // iPhone button names stay as the phone shows them
+  const code=t=>`<button class="codechip" data-act="smsCopy" data-v="${esc(t)}" dir="auto" data-notr>${esc(t)}<span>copy</span></button>`;
+  dlg('Save bank SMS automatically',`<p class="hint" style="margin-top:0">Apple doesn’t let any app read your messages. But your iPhone’s <b data-notr>Shortcuts</b> app can save each bank SMS into a file the moment it arrives — even when Masroof is closed. Masroof then imports them in one tap. Nothing leaves your iPhone and iCloud.</p>
     <ol class="steps">
       ${step(1,'Start an automation','Open <b>Shortcuts</b> → <b>Automation</b> tab → <b>＋</b> → <b>Message</b>.')}
       ${step(2,'Only bank messages',`Set <b>Message Contains</b> to ${code('OMR')} and leave Sender as anyone. Choose <b>Run Immediately</b>, turn off <b>Notify When Run</b>, tap <b>Next</b> → <b>New Blank Automation</b>.`)}
       ${step(3,'Add a “Text” action',`Search actions for <b>Text</b>. Inside it type ${code('=====')} then a new line, then tap <b>Current Date</b> in the bar above the keyboard — tap it again and set <b>Date Format</b> to <b>ISO 8601</b>. New line, then tap <b>Shortcut Input</b>.`)}
       ${step(4,'Add “Append to Text File”',`Search for <b>Append to Text File</b>. Set the file path to ${code('Masroof/bank-sms.txt')} and turn on <b>Make New Line</b>. Tap <b>Done</b>.`)}
       ${step(5,'Arabic messages?',`If your bank texts in Arabic, make a second automation the same way with <b>Message Contains</b> ${code('ر.ع')}.`)}
-      ${step(6,'Import any time','In Masroof tap <b>Import bank SMS</b> and pick <b>iCloud Drive › Shortcuts › Masroof › bank-sms.txt</b>. Always pick the same file — Masroof skips messages it already has, and puts each one on the right account using the card’s last 4 digits.')}
+      ${step(6,'Import any time','In Masroof tap <strong>Import bank SMS</strong> and pick <b>iCloud Drive › Shortcuts › Masroof › bank-sms.txt</b>. Always pick the same file — Masroof skips messages it already has, and puts each one on the right account using the card’s last 4 digits.')}
     </ol>
-    <p class="hint">Can’t find “Append to Text File”? Use <b>Append to Note</b> instead, then copy the note and paste it into Import.</p>`,
+    <p class="hint">Can’t find “Append to Text File”? Use <b data-notr>Append to Note</b> instead, then copy the note and paste it into Import.</p>`,
     `<button class="btn" data-act="smsFile">Import now</button><span class="spacer"></span><button class="btn primary" data-act="smsDone">I’ve set it up</button>`);
 }
 function viewSettings(){
@@ -860,6 +927,7 @@ function viewSettings(){
   ${accOpen("Home screen","Home screen")}<div class="acc-b"><p class="hint" style="margin-bottom:6px">Show or hide sections.</p>
     ${WIDGETS.map(([k,l])=>`<label class="toggle-row"><span>${l}</span><input type="checkbox" data-widget="${k}"${p.widgets[k]?' checked':''}></label>`).join('')}</div></details>
   ${accOpen("General","General")}<div class="acc-b"><div class="rows">
+    <div class="rw"><span data-notr>Language · اللغة</span><select class="sel" data-change="lang" data-notr aria-label="Language">${[['en','English'],['ar','العربية']].map(([v,l])=>`<option value="${v}"${LANG===v?' selected':''}>${l}</option>`).join('')}</select></div>
     <div class="rw"><span>Currency</span><select class="sel" data-change="currency">${CURRENCIES.map(([c])=>`<option${p.currency===c?' selected':''}>${c}</option>`).join('')}</select></div>
     <div class="rw"><span>Month starts on<br><span class="muted" style="font-size:13px">Pick your payday to budget salary to salary</span></span><select class="sel" data-change="monthStart" aria-label="Month starts on">${Array.from({length:28},(_,i)=>i+1).map(v=>`<option value="${v}"${mStart()===v?' selected':''}>${v===1?'1st (calendar month)':'Day '+v}</option>`).join('')}</select></div>
     <div class="rw"><span>Week starts on</span><select class="sel" data-change="weekStart">${[[0,'Sunday'],[6,'Saturday'],[1,'Monday']].map(([v,l])=>`<option value="${v}"${p.weekStart===v?' selected':''}>${l}</option>`).join('')}</select></div>
@@ -1474,7 +1542,7 @@ async function makeReport(month){
   const pages=[]; let pg,x;
   const newPage=()=>{ pg=document.createElement('canvas'); pg.width=PW; pg.height=PH; x=pg.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,PW,PH); pages.push(pg); };
   const fit=(t,w)=>{ t=String(t??''); if(x.measureText(t).width<=w) return t; while(t.length>1&&x.measureText(t+'…').width>w) t=t.slice(0,-1); return t+'…'; };
-  const T=(t,X,Y,o={})=>{ x.font=`${o.w||500} ${o.s||24}px ${FONT}`; x.fillStyle=o.c||INK; x.textAlign=o.a||'left'; x.fillText(o.max?fit(t,o.max):String(t),X,Y); };
+  const T=(t,X,Y,o={})=>{ t=tr(String(t??'')); x.font=`${o.w||500} ${o.s||24}px ${FONT}`; x.fillStyle=o.c||INK; x.textAlign=o.a||'left'; x.fillText(o.max?fit(t,o.max):t,X,Y); };
   const box=(X,Y,w,h,r,fill)=>{ x.beginPath(); if(x.roundRect) x.roundRect(X,Y,w,h,r); else x.rect(X,Y,w,h); x.fillStyle=fill; x.fill(); };
   const title=(t,Y)=>{ T(t,M,Y,{w:800,s:32}); };
   const footer=()=>{ T(`Masroof · ${label}`,M,PH-46,{s:18,c:MUT}); T(`Page ${pages.length}`,PW-M,PH-46,{s:18,c:MUT,a:'right'}); };
@@ -1866,7 +1934,7 @@ function weekBarsHTML(){
   const max=Math.max(1e-9,...per.map(p=>p.spent)); state._wk={days,per};
   return `<section class="panel wk"><h2>Last 7 days</h2><div class="wk-cap" id="wkCap"><b>${money(sum(per,p=>p.spent))}</b><span>this week · tap a day</span></div>
     <div class="wk-bars">${per.map((p,i)=>{const cats=Object.entries(p.byCat).filter(([,v])=>v.total>0).sort((a,b)=>b[1].total-a[1].total);
-      return `<button class="wk-col${i===6?' today':''}" data-act="wkBar" data-i="${i}"><span class="wk-stack" style="height:${Math.max(p.spent>0?6:2,p.spent/max*100)}%">${cats.map(([id,v])=>`<i style="flex:${v.total};background:${cat(id).color}"></i>`).join('')}</span><span class="wk-d">${DOW[pd(days[i]).getDay()].slice(0,1)}</span></button>`}).join('')}</div></section>`;
+      return `<button class="wk-col${i===6?' today':''}" data-act="wkBar" data-i="${i}"><span class="wk-stack" style="height:${Math.max(p.spent>0?6:2,p.spent/max*100)}%">${cats.map(([id,v])=>`<i style="flex:${v.total};background:${cat(id).color}"></i>`).join('')}</span><span class="wk-d">${dowS(pd(days[i]).getDay(),1)}</span></button>`}).join('')}</div></section>`;
 }
 function wkTap(i){ const w=state._wk; if(!w) return; const p=w.per[i]; const top=Object.entries(p.byCat).sort((a,b)=>b[1].total-a[1].total)[0];
   document.querySelectorAll('.wk-col').forEach((c,k)=>c.classList.toggle('sel',k===+i));
@@ -2274,6 +2342,7 @@ document.addEventListener('click',async e=>{
     case 'lkCreate': if(!busyLock) lkCreate(); break;
     case 'lkUnlock': lkUnlock(); break;
     case 'lkBio': bioUnlock(); break;
+    case 'lkLang': secMeta.lang=LANG==='ar'?'en':'ar'; saveSec(); setLang(secMeta.lang,true); break;
     case 'bioToggle': { if(vaultRec&&vaultRec.bio){ delete vaultRec.bio; hasBio=false; await saveNow(); toast('Face ID unlock turned off'); render(false); break; }
       try{ await bioEnable(); toast('Face ID unlock is on'); }catch(e){ toast(e&&e.message==='noprf'?'Face ID unlock needs iOS 18 or later':e&&e.name==='NotAllowedError'?'Cancelled':'Couldn’t turn on Face ID',{bad:true}); } render(false); break; }
     case 'lkRestore': lkRestore(); break;
@@ -2356,6 +2425,7 @@ document.addEventListener('change',e=>{
     case 'txCat': u.txCat=t.value; renderTxList(); break;
     case 'currency': p.currency=t.value; p.decimals=(CURRENCIES.find(c=>c[0]===t.value)||[0,2])[1]; persist('profile'); render(); break;
     case 'weekStart': p.weekStart=+t.value; persist('profile'); render(); break;
+    case 'lang': secMeta.lang=t.value; saveSec(); { const y=window.scrollY; setLang(t.value,true); window.scrollTo(0,y); } break;
     case 'monthStart': p.monthStart=+t.value; persist('profile'); u.anchor=todayStr(); render(false); toast(p.monthStart===1?'Months follow the calendar':`Your month now runs from day ${p.monthStart}`); break;
     case 'theme': p.theme=t.value; applyTheme(); persist('profile'); break;
   }
@@ -2461,7 +2531,7 @@ function showLock(kind,msg){
     <label class="check"><input type="checkbox" class="tick" id="pAck"> I understand that if I forget this passcode, my data can’t be recovered by anyone.</label>
     <p class="err" id="lockErr">${esc(msg||'')}</p>
     <button class="btn primary" data-act="lkCreate">Create passcode</button>
-    <button class="btn link" data-act="restore" style="align-self:center">Restore from a backup file instead</button></div>`;
+    <button class="btn link" data-act="restore" style="align-self:center">Restore from a backup file instead</button>${langLink()}</div>`;
   else if(kind==='restorePass') L.innerHTML=`<div class="lockbox"><div class="shield">📦</div><h1>Open the backup</h1>
     <p>Enter the passcode that was in use when this backup was made. After restoring, that becomes your passcode.</p>
     <input type="text" autocomplete="username" value="Masroof" hidden aria-hidden="true">
@@ -2475,10 +2545,11 @@ function showLock(kind,msg){
     <input class="inp" id="pu" type="password" autocomplete="current-password" placeholder="Passcode" aria-label="Passcode"${wait?' disabled':''}>
     <p class="err" id="lockErr">${wait?`Too many tries. Wait ${wait} seconds.`:esc(msg||'')}</p>
     <button class="btn primary" data-act="lkUnlock"${wait?' disabled':''}>Unlock</button>
-    <button class="btn link" data-act="lkForgot" style="align-self:center">Forgot passcode?</button></div>`;
+    <button class="btn link" data-act="lkForgot" style="align-self:center">Forgot passcode?</button>${langLink()}</div>`;
   if(wait&&kind==='unlock') setTimeout(()=>{ if(lockMode==='unlock'&&!DEK) showLock('unlock'); },1000*Math.min(wait,5));
   if(!(kind==='unlock'&&hasBio)) setTimeout(()=>{const i=L.querySelector('input.inp:not([disabled])'); if(i) i.focus();},80); // with Face ID, don't pop up the keyboard
 }
+const langLink=()=>`<button class="btn link lang-link" data-act="lkLang" data-notr style="align-self:center">${LANG==='ar'?'English':'العربية'}</button>`;
 function strengthOf(p){ let s=0; if(p.length>=6)s++; if(p.length>=10)s++; if(p.length>=14)s++; if(/[a-z]/i.test(p)&&/\d/.test(p))s++; if(/[^a-z0-9]/i.test(p))s++; if(/^(\d)\1+$|^(012345|123456|654321|111111|000000)/.test(p)) s=0; return Math.min(4,s); }
 function lockErr(m){const e=$('#lockErr'); if(e) e.textContent=m;}
 async function lkCreate(){
@@ -2703,6 +2774,7 @@ async function boot(){
   if(!window.crypto||!crypto.subtle||!window.indexedDB){ $('#main').innerHTML='<div class="loading">This browser can\u2019t encrypt data. Open the app in Safari.</div>'; return; }
   try{ idb=await idbOpen(); }catch(e){ $('#main').innerHTML='<div class="loading">Storage is blocked. In Safari, turn off Private Browsing.</div>'; return; }
   const m=await kvGet('meta').catch(()=>null); if(m) secMeta={...secMeta,...m};
+  setLang(secMeta.lang||(/^ar\b/i.test(navigator.language||'')?'ar':'en'));
   const v=await kvGet('vault').catch(()=>null); hasBio=!!(v&&v.bio); await checkBio();
   $('#main').innerHTML='';
   showLock(v?'unlock':'setup'); booted=true;

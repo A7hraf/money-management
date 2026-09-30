@@ -798,3 +798,16 @@ button.bankchk{width:100%;text-align:left;color:inherit;font:inherit}
 .lockbox .btn.faceid{display:flex;align-items:center;justify-content:center;gap:10px}
 .lockbox .or{color:rgba(255,255,255,.6);margin:6px 0 0}
 .lockbox .or::before,.lockbox .or::after{background:rgba(255,255,255,.2)}
+
+/* ===== Arabic, right to left ===== */
+[dir=rtl] body{font-family:-apple-system,BlinkMacSystemFont,"SF Arabic","Geeza Pro","Noto Sans Arabic","Segoe UI",Tahoma,sans-serif;letter-spacing:0}
+[dir=rtl] *{letter-spacing:0!important}
+/* numbers and amounts read left to right, minus sign first */
+[dir=rtl] .odo,[dir=rtl] .achart,[dir=rtl] .codechip{direction:ltr}
+[dir=rtl] span,[dir=rtl] b,[dir=rtl] strong,[dir=rtl] small,[dir=rtl] .amt,[dir=rtl] .sum-amt,[dir=rtl] .bc-amt,[dir=rtl] .hero-amt,[dir=rtl] .fc-big,[dir=rtl] .alert-big,[dir=rtl] .bal{unicode-bidi:plaintext}
+[dir=rtl] .bc-num,[dir=rtl] .wnum{font-family:inherit;direction:rtl}
+[dir=rtl] .tx .amt,[dir=rtl] .rows .rw>b:last-child,[dir=rtl] .fc-r b{text-align:left}
+[dir=rtl] .back svg,[dir=rtl] .nav-btn svg,[dir=rtl] .sb-go,[dir=rtl] .go{transform:scaleX(-1)}
+[dir=rtl] .sb-go{transform:none}
+[dir=rtl] .cat-list .chev,[dir=rtl] .cats .chev{transform:scaleX(-1)}
+[dir=rtl] .lang-link{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
