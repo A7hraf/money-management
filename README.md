@@ -25,7 +25,7 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 
 ```
 index.html        page shell
-sw.js             offline cache — bump VERSION when you update the app
+sw.js             offline cache (fetches fresh code when online, cached copy offline)
 manifest.json     Home Screen app settings
 css/app.css       design (light + dark)
 js/app.js         the app: storage, encryption, screens, receipt and SMS reading
@@ -48,8 +48,8 @@ Only the app's code is on GitHub. Your data never goes there.
 
 - Always open Masroof from the Home Screen icon. Safari tabs keep separate data.
 - There is no way to recover a forgotten passcode. Save an encrypted backup regularly (**Settings → Backups**) to Files or iCloud Drive. A backup opens only with the passcode you had when you made it.
-- Deleting the Home Screen icon deletes the app's data, so make a backup first.
-- **To update the app:** change the files, bump `VERSION` in `sw.js`, push to `main`, then close and reopen the app twice.
+- **Never delete the Home Screen icon to update.** On iPhone each Home Screen app has its own storage, so deleting the icon deletes all your data. A new icon starts empty and asks for a new passcode. If you ever have to do it, save a backup first and restore it in the new icon.
+- **To update the app:** push your changes to `main`, then wait a minute or two for GitHub Pages. The next time you open Masroof while online, or come back to it at the lock screen, it loads the new version. Your data and passcode stay the same. No version bump is needed.
 
 ## Licences
 

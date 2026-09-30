@@ -2035,8 +2035,15 @@ async function lkRestore(){
 ['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,()=>{lastActive=Date.now()},{passive:true,capture:true}));
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){ hiddenAt=Date.now(); saveNow(); if(DEK&&+secMeta.autoLock===0) lockNow(); }
-  else { if(DEK&&hiddenAt&&Date.now()-hiddenAt>Math.max(1,+secMeta.autoLock)*60000) lockNow(); hiddenAt=null; newDayCheck(); }
+  else { const away=hiddenAt?Date.now()-hiddenAt:0; hiddenAt=null; checkForUpdate();
+    if(DEK&&away>Math.max(1,+secMeta.autoLock)*60000) lockNow().then(reloadIfLocked);
+    else if(!DEK&&away>30000) reloadIfLocked();
+    newDayCheck(); }
 });
+// Coming back to a locked app: reload it so a new version pushed to GitHub is picked up.
+// Nothing is lost — the data stays in the encrypted vault and the passcode is needed anyway.
+function reloadIfLocked(){ if(!DEK&&lockMode==='unlock'&&!pendingRestore&&!busyLock) saving.then(()=>location.reload()); }
+function checkForUpdate(){ if(navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r=>r&&r.update()).catch(()=>{}); }
 // the app can stay open past midnight: catch up repeating payments and move "today" along
 let openDay=todayStr();
 function newDayCheck(){
@@ -2142,7 +2149,7 @@ async function boot(){
   const v=await kvGet('vault').catch(()=>null);
   $('#main').innerHTML='';
   showLock(v?'unlock':'setup'); booted=true;
-  if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')) navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});
 }
 
 boot();
