@@ -5,11 +5,11 @@
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#EEF2EF",
-  "theme_color": "#0E6B5C",
+  "background_color": "#061529",
+  "theme_color": "#0E3159",
   "icons": [
-    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
-    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
-    {"src": "icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any"}
+    {"src": "images/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "images/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "images/icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any"}
   ]
 }
