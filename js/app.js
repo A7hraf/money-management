@@ -221,8 +221,8 @@ function holdingStats(h){
 }
 function wealth(){
   const b=balances(); const pb=peopleBalances();
-  const cash=sum(P().accounts.filter(a=>a.type!=='savings'),a=>b[a.id]);
-  const savings=sum(P().accounts.filter(a=>a.type==='savings'),a=>b[a.id]);
+  const cash=sum(P().accounts.filter(a=>!hasRole(a,'savings')),a=>b[a.id]);
+  const savings=sum(P().accounts.filter(a=>hasRole(a,'savings')),a=>b[a.id]);
   const inv=sum(P().investments,h=>holdingStats(h).value);
   const owed=sum(Object.values(pb).filter(v=>v>0)); const owe=-sum(Object.values(pb).filter(v=>v<0));
   return {b,pb,cash,savings,inv,owed,owe,total:cash+savings+inv+owed-owe};
@@ -814,7 +814,7 @@ function openTx(id,preset){
       personId:t.personId||'',debtKind:t.debtKind||(t.dir==='receive'?'borrowed':'lent'),investmentId:t.investmentId||'',invDir:t.dir||'buy',units:t.units?String(t.units):'',
       receipt:t.receipt||null,auto:t.auto,demo:t.demo,recurringId:t.recurringId,ts:t.ts,imported:t.imported,refund:!!t.refund,inst:t.inst,repeatCount:''};
   } else {
-    const acc=defaultAcct(); const save=(P().accounts.find(a=>a.type==='savings'&&a.id!==acc)||P().accounts.find(a=>a.id!==acc)||{}).id;
+    const acc=defaultAcct(); const save=(P().accounts.find(a=>hasRole(a,'savings')&&a.id!==acc)||P().accounts.find(a=>a.id!==acc)||{}).id;
     draft={id:null,type:'expense',amount:'',catId:null,item:'',accountId:acc,toAccountId:save,date:todayStr(),note:'',tags:'',manual:false,repeat:false,freq:'monthly',
       itemized:false,lines:[],tax:'',taxMode:'pct',service:'',serviceMode:'pct',discount:'',split:{on:false,paidBy:'me',who:['me'],mode:'equal',custom:{}},fx:{on:false,cur:cur()==='USD'?'AED':'USD',orig:'',rate:''},
       personId:(P().people[0]||{}).id||'',debtKind:'lent',investmentId:(P().investments[0]||{}).id||'',invDir:'buy',units:'',receipt:null,refund:false,repeatCount:''};
@@ -1128,14 +1128,15 @@ function renderImport(){
 }
 function markDups(rows){ const ex=allTx(); for(const r of rows){ r.dup=ex.some(t=>t.date===r.date&&Math.abs(t.amount-r.amount)<1e-6); if(r.dup) r.on=false; } return rows; }
 function localParse(text){
-  const chunks=text.split(/\n\s*\n|\r?\n(?=\S)/).map(s=>s.trim()).filter(Boolean); const out=[];
+  // messages separated by blank lines keep their line breaks together; otherwise each line is one message (statement rows)
+  const chunks=(/\n\s*\n/.test(text)?text.split(/\n\s*\n/):text.split(/\r?\n/)).map(s=>s.replace(/\s+/g,' ').trim()).filter(Boolean); const out=[];
   const amtRe=/(?:OMR|RO|R\.O\.?|AED|SAR|USD|KWD|BHD|QAR|EUR|GBP|INR|\$)\s*([\d,]+(?:\.\d+)?)|([\d,]+(?:\.\d+)?)\s*(?:OMR|RO|R\.O\.?|AED|SAR|USD|KWD|BHD|QAR)/i;
   for(const c of chunks){ const m=c.match(amtRe); if(!m||/\botp\b|one.?time|password|declined/i.test(c)) continue;
     const amount=num((m[1]||m[2])); if(!(amount>0)) continue;
     const type=/credited|received|deposit|salary|refund|credit of/i.test(c)&&!/debited|purchase|spent|used|paid/i.test(c)?'income':'expense';
     let date=todayStr(); const dm=c.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
     if(dm){let y=+dm[3];if(y<100)y+=2000;const dd=new Date(y,+dm[2]-1,+dm[1]);if(!isNaN(dd)) date=ymd(dd);} else {const im=c.match(/\d{4}-\d{2}-\d{2}/); if(im) date=im[0];}
-    let merchant=''; const mm=c.match(/\b(?:at|to|from)\s+([A-Za-z0-9&'.\- ]{2,40}?)(?:\s+on\b|\s+dated|[.,]|$)/i); if(mm) merchant=mm[1].trim();
+    let merchant=''; const mm=c.match(/\b(?:at|to|from)\s+([A-Za-z0-9&'.\- ]{2,40}?)(?:\s+on\b|\s+dated|[.,]|$)/i); if(mm) merchant=mm[1].replace(/\s*\b(?:OMR|RO|R\.O|AED|SAR|USD|KWD|BHD|QAR|EUR|GBP|INR)\b.*$/i,'').trim();
     if(type==='income'&&/salary/i.test(c)) merchant='Salary'; if(!merchant) merchant=c.slice(0,40);
     const g=guessCategory(merchant+' '+c,type)||{catId:type==='income'?'inc_other':'other',item:''};
     out.push({on:true,date,type,amount:round(amount,dec()),merchant,catId:g.catId,item:g.item||'',accountId:guessAcctFromText(c)||defaultAcct()}); }
@@ -1203,7 +1204,7 @@ function clearDemo(){
   toast('Demo data removed'); render();
 }
 async function exportCSV(){
-  if(!downloadsNs) return; const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  if(!downloadsNs) return; const q=v=>{let x=String(v??''); if(typeof v==='string'&&/^[=+\-@\t\r]/.test(x)) x="'"+x; return `"${x.replace(/"/g,'""')}"`;}; // a leading ' stops spreadsheets running text as a formula
   const rows=[['Date','Type','Total','Your share','Currency','Category','Item / line','Description','Account','Other side','Tax','Service','Tags']];
   for(const t of allTx().sort((a,b)=>a.date<b.date?-1:1)){
     const other=t.toAccountId?acctName(t.toAccountId):t.personId?personName(t.personId):t.investmentId?(holding(t.investmentId)||{}).name:t.split?t.split.shares.filter(s=>s.who!=='me').map(s=>personName(s.who)).join(' + '):'';
@@ -1955,7 +1956,7 @@ async function lkUnlock(){
 }
 function afterUnlock(isNew){
   document.body.classList.remove('locked'); $('#lock').hidden=true; $('#lock').innerHTML=''; $('#main').hidden=false;
-  fillProfile(); state.ready=true; lastActive=Date.now();
+  fillProfile(); state.ready=true; lastActive=Date.now(); openDay=todayStr();
   if(!isNew) runRecurring();
   state.ui.tab='home'; render(); window.scrollTo(0,0);
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().then(v=>{persistGranted=v;}).catch(()=>{});
@@ -2034,8 +2035,17 @@ async function lkRestore(){
 ['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,()=>{lastActive=Date.now()},{passive:true,capture:true}));
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){ hiddenAt=Date.now(); saveNow(); if(DEK&&+secMeta.autoLock===0) lockNow(); }
-  else { if(DEK&&hiddenAt&&Date.now()-hiddenAt>Math.max(1,+secMeta.autoLock)*60000) lockNow(); hiddenAt=null; }
+  else { if(DEK&&hiddenAt&&Date.now()-hiddenAt>Math.max(1,+secMeta.autoLock)*60000) lockNow(); hiddenAt=null; newDayCheck(); }
 });
+// the app can stay open past midnight: catch up repeating payments and move "today" along
+let openDay=todayStr();
+function newDayCheck(){
+  const t=todayStr(); if(t===openDay) return; const was=openDay; openDay=t;
+  if(!DEK||!state.ready) return;
+  const u=state.ui; if(u.anchor===was) u.anchor=t; if(u.txMonth===was.slice(0,7)) u.txMonth=t.slice(0,7);
+  runRecurring(); if(!$('#dlg').open) render(false);
+}
+setInterval(newDayCheck,60000);
 window.addEventListener('pagehide',()=>{ saveNow(); });
 setInterval(()=>{ if(DEK&&+secMeta.autoLock>0&&Date.now()-lastActive>secMeta.autoLock*60000&&!$('#dlg').open) lockNow(); },15000);
 
