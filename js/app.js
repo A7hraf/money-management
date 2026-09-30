@@ -84,7 +84,7 @@ const state={profile:null,months:{},ready:false,
   ui:{tab:'home',period:'month',anchor:todayStr(),acct:'all',openCat:null,txMonth:todayStr().slice(0,7),txQ:'',txType:'all',txCat:'all'}};
 // Everything lives in an encrypted vault on this phone (see "encrypted local vault" below).
 // persist() just schedules one encrypted save of the whole state.
-const mode='local', sampleFn=null, canImages=true;
+const canImages=true;
 const downloadsNs={save:async({filename,data})=>{offerFile(filename,data,'text/csv','This CSV is NOT encrypted — anyone who opens the file can read it. Save it somewhere private.');return {status:'offered'};}};
 const assetsNs={upload:async blob=>({id:await putReceipt(blob)})};
 function persist(){ scheduleSave(); }
@@ -112,8 +112,6 @@ function fillProfile(){
   applyTheme();
 }
 function applyTheme(){const t=state.profile&&state.profile.theme||'auto'; if(t==='auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme=t;}
-
-function softRender(){ render(false); }
 
 /* ================= lookups ================= */
 const P=()=>state.profile;
@@ -277,13 +275,6 @@ function limitFor(dateStr){
 function todayStatus(){
   const t=todayStr(); const limit=limitFor(t); const spent=countedOn(t);
   return {limit,spent,left:limit==null?null:limit-spent,pct:limit?spent/limit*100:(spent>0?999:0)};
-}
-function streak(){
-  const all=allTx(); if(!all.length) return 0;
-  const first=all.reduce((m,t)=>t.date<m?t.date:m,todayStr());
-  let n=0; let d=addDays(new Date(),-1);
-  for(let i=0;i<120;i++){const k=ymd(d); if(k<first) break; const l=limitFor(k); if(l==null) break; if(countedOn(k)>l+1e-9) break; n++; d=addDays(d,-1);}
-  return n;
 }
 function suggestMonthly(){
   // average income of the last 3 full months, minus repeating payments and savings/investing habits
@@ -461,36 +452,10 @@ function homeRestHTML(){
   h+=`<div class="grid" style="margin-top:16px"><div class="stack">${spending}</div><div class="stack">${foryou}${W.trend?areaChartHTML(u):''}</div></div>`;
   return h;
 }
-function ringSVG(pct,color){
-  const r=46,c=2*Math.PI*r,p=Math.min(100,Math.max(0,pct));
-  return `<svg class="ring" viewBox="0 0 108 108" aria-hidden="true"><circle cx="54" cy="54" r="${r}" fill="none" stroke="var(--sunk)" stroke-width="11"/>
-  <circle cx="54" cy="54" r="${r}" fill="none" stroke="${color}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${c*p/100} ${c}" transform="rotate(-90 54 54)"/>
-  <text x="54" y="60" text-anchor="middle" font-family="ui-rounded, -apple-system, sans-serif" font-weight="800" font-size="20" fill="var(--ink)">${pct>999?'999+':Math.round(pct)}%</text></svg>`;
-}
-function todayCardHTML(){
-  const L=P().limits;
-  if(L.mode==='off'||todayStatus().limit==null) return `<section class="panel"><h2>Daily spending limit</h2>
-    <p class="hint" style="margin-bottom:10px">Pick how much you allow yourself per day. Masroof warns you as you get close and when you go over.</p>
-    <div class="qrow" style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="quickLimit" inputmode="decimal" placeholder="e.g. 5.000" style="width:130px"><button class="btn primary" data-act="setQuickLimit">Set daily limit</button><button class="btn" data-act="goLimits">Smart limit…</button></div></section>`;
-  const st=todayStatus(); const over=st.left<0; const warn=!over&&st.pct>=L.warnAt;
-  const color=over?'var(--spend)':warn?'var(--warn)':'var(--brand)'; const sk=streak();
-  return `<section class="panel today${over?' over':''}">${ringSVG(st.pct,color)}<div>
-    <div class="lbl">${over?'Over today\u2019s limit by':'Left to spend today'}</div>
-    <div class="num">${money(Math.abs(st.left))} <span class="muted" style="font:600 14px var(--body)">${esc(cur())}</span></div>
-    <div class="sub">Spent ${money(st.spent)} of ${money(st.limit)}${L.mode==='smart'?' · smart limit from your '+money(L.monthly)+' monthly budget':''}${L.scope==='daily'?' · bills not counted':''}</div>
-    ${sk>0?`<span class="streak">🔥 ${sk} day${sk>1?'s':''} in a row within your limit</span>`:''}</div></section>`;
-}
 function quickCardHTML(){
   const chips=quickSuggestions();
   return `<section class="panel quick"><div class="qbox"><span class="qic">⚡</span><input id="quickIn" placeholder="Quick add: karak 0.2, lulu 23.5 card" autocomplete="off" aria-label="Quick add"><button class="qgo" data-act="quickAdd" aria-label="Add">＋</button></div>
     ${chips.length?`<div class="qchips">${chips.map((c,i)=>{const cc=cat(c.catId);return `<button class="qchip" data-act="quickChip" data-i="${i}" style="--cc:${cc.color}"><span class="qe">${cc.icon||'•'}</span><span class="ql">${esc(c.label)}</span><b>${money(c.amount)}</b></button>`}).join('')}</div>`:`<p class="hint" style="margin-top:10px">Things you buy often turn into one-tap buttons here.</p>`}</section>`;
-}
-function stripHTML(s){
-  const ents=Object.entries(s.byCat).sort((x,y)=>y[1].total-x[1].total);
-  if(!ents.length) return `<div class="empty"><span class="big-emoji">🌱</span>Nothing spent in this period</div>`;
-  return `<div class="strip" role="group" aria-label="Spending by category">${ents.map(([id,v])=>{const c=cat(id);const pct=v.total/s.spent*100;
-    return `<button style="flex:${v.total} 1 0;background:${c.color}" data-act="openCat" data-v="${esc(id)}" aria-expanded="${state.ui.openCat===id}" title="${esc(c.name)}: ${money(v.total)} (${pct.toFixed(0)}%)" aria-label="${esc(c.name)} ${pct.toFixed(0)} percent"></button>`}).join('')}</div>
-    <p class="hint">Tap a category to see exactly what you bought.</p>`;
 }
 function catListHTML(s,ps){
   const u=state.ui; const ents=Object.entries(s.byCat).sort((x,y)=>y[1].total-x[1].total);
@@ -525,25 +490,6 @@ function trendBuckets(u){
   for(let d=pd(start);ymd(d)<=b;d=addDays(d,1)){const k=ymd(d);
     out.push({key:k,label:u.period==='month'?String(d.getDate()):DOW[d.getDay()].slice(0,2),full:fmtD(k,{weekday:'short',day:'numeric',month:'short'}),value:s.byDate[k]||0,cur:(u.period==='day'&&k===u.anchor)||k===todayStr(),limit:showLimit&&k<=todayStr()?limitFor(k):null});}
   return out;
-}
-function trendHTML(u){
-  const bk=trendBuckets(u); const max=Math.max(...bk.map(x=>Math.max(x.value,x.limit||0)),0);
-  const title={day:'Last 14 days',week:'Day by day',month:'Day by day',year:'Month by month'}[u.period];
-  if(!bk.some(x=>x.value>0)) return `<section class="panel chart"><h2>${title}</h2><div class="empty">No spending to chart yet.</div></section>`;
-  const W=420,H=170,pt=10,pb=24,n=bk.length,gap=n>20?2:7,bw=(W-gap*(n-1))/n;
-  const past=bk.filter(x=>x.key<=todayStr().slice(0,x.key.length)); const avg=sum(past,x=>x.value)/Math.max(1,past.length);
-  const y=v=>pt+(H-pt-pb)*(1-v/max); let g='';
-  bk.forEach((x,i)=>{const X=i*(bw+gap); const over=x.limit!=null&&x.value>x.limit;
-    g+=`<g class="bk" data-i="${i}" style="cursor:pointer"><rect x="${X}" y="${pt}" width="${bw}" height="${H-pt-pb}" fill="transparent"/><rect x="${X}" y="${y(x.value)}" width="${bw}" height="${Math.max(H-pb-y(x.value),x.value>0?2:0)}" rx="${Math.min(4,bw/3)}" fill="${over?'var(--spend)':x.cur?'var(--brand)':'var(--ink)'}" opacity="${x.cur||over?1:.7}"/>`;
-    if(x.limit!=null) g+=`<line x1="${X-1}" x2="${X+bw+1}" y1="${y(x.limit)}" y2="${y(x.limit)}" stroke="var(--warn)" stroke-width="2"/>`;
-    const every=n>20?5:1; if(i%every===0||n<=14) g+=`<text x="${X+bw/2}" y="${H-7}" font-size="${n>20?9:11}" text-anchor="middle" fill="var(--muted)" font-family="Instrument Sans, sans-serif">${esc(x.label)}</text>`;
-    g+='</g>';});
-  g+=`<line x1="0" x2="${W}" y1="${y(avg)}" y2="${y(avg)}" stroke="var(--muted)" stroke-dasharray="4 4" stroke-width="1.2"/>`;
-  const top=bk.reduce((m,x)=>x.value>m.value?x:m,bk[0]); state._bk=bk;
-  const overDays=bk.filter(x=>x.limit!=null&&x.value>x.limit).length;
-  return `<section class="panel chart"><h2>${title}<span class="aside">dashed = average ${money(avg)}${bk.some(x=>x.limit!=null)?' · gold = daily limit':''}</span></h2>
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Spending chart">${g}</svg>
-    <div class="cap" id="chartCap">Highest: ${esc(top.full)} · ${money(top.value)}.${overDays?` Over the limit on ${overDays} day${overDays>1?'s':''} (red).`:''} Tap a bar for its total.</div></section>`;
 }
 function insightsHTML(u,s,ps,a,b,asList){
   if(!s.exp.length) return asList?[]:'';
@@ -686,7 +632,6 @@ function viewWealth(){
     :'<p class="muted">A car, Hajj, a wedding, an emergency fund — set a target and see how much to put aside each month.</p>'}
   </section></div></div>`;
 }
-const WGRAD={bank:'linear-gradient(135deg,#0FA968,#05603A)',card:'linear-gradient(135deg,#344054,#0B1220)',cash:'linear-gradient(135deg,#F4B740,#C26A06)',wallet:'linear-gradient(135deg,#8B6CFA,#4A2FBD)',savings:'linear-gradient(135deg,#3B9BFB,#1849A9)'};
 const goalSaved=g=>g.accountId&&acct(g.accountId)?(balances()[g.accountId]||0):(+g.saved||0);
 
 /* ---------- Settings ---------- */
@@ -941,7 +886,6 @@ function moreBlock(d,inner,count){
   return `<button class="more-toggle" data-act="dMore" aria-expanded="${!!d._more}"><span>More options</span><small>${count}</small><i>⌄</i></button>${d._more?`<div class="more-body">${inner}</div>`:''}`;
 }
 const amountField=(d,ro,label)=>`<div class="field"><label for="amt">${label||'Amount'} (${esc(cur())})</label><input id="amt" class="amount-in" inputmode="decimal" autocomplete="off" placeholder="0.${'0'.repeat(dec())}" value="${esc(d.amount)}" data-f="amount"${ro?' readonly tabindex="-1"':''}></div>`;
-const dateField=d=>`<div class="field"><label for="dt">Date</label><input id="dt" type="date" class="inp" value="${esc(d.date)}" data-f="date"></div>`;
 const noteField=(d,label,ph)=>`<div class="field"><label for="note">${label}</label><input id="note" class="inp" placeholder="${ph}" value="${esc(d.note)}" data-f="note" autocomplete="off" list="dl-notes"></div>
   <datalist id="dl-notes">${[...new Set(allTx().map(t=>t.note).filter(Boolean))].slice(-60).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`;
 const tagsField=d=>`<div class="field"><label for="tags">Tags <span class="muted" style="font-weight:400">— optional, e.g. trip, ramadan, work</span></label><input id="tags" class="inp" value="${esc(d.tags)}" data-f="tags" autocomplete="off"></div>`;
@@ -1292,8 +1236,8 @@ function saveQuick(c){
   celebrate(); toast(`${tx.note||tx.item} · ${money(tx.amount)} saved to ${cat(tx.catId).name}${tx.item?' › '+tx.item:''}`,{undo:lastUndo});
   render(false); checkAlerts(pre,tx);
 }
-const LOGO_MARK='./logo-mark.jpg';
-const LOGO_FULL=()=>'./logo.jpg';
+const LOGO_MARK='./images/logo-mark.jpg';
+const LOGO_FULL=()=>'./images/logo.jpg';
 /* ================= v5: accounts as themed cards ================= */
 const CARD_COLORS=[['Red','#C8102E'],['Black','#141414'],['Emerald','#0A8F5B'],['Navy','#15325B'],['Royal blue','#1D4ED8'],['Teal','#0F766E'],['Purple','#6D28D9'],['Maroon','#7A1F2B'],['Orange','#EA580C'],['Gold','#C99A2E'],['Silver','#9AA4B2'],['Rose','#DB2777']];
 const TYPE_COLOR={bank:'#0A8F5B',card:'#15325B',cash:'#C99A2E',wallet:'#6D28D9',savings:'#1D4ED8'};
@@ -1343,40 +1287,6 @@ function sparkSVG(vals,color){
     <path d="${d} L${W},${H} L0,${H} Z" fill="url(#sg)"/><path d="${d}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" pathLength="1" class="spark"/></svg>`;
 }
 function roleChips(a,light){ return (a.roles||[]).map(r=>{const x=ROLES.find(z=>z[0]===r); return x?`<span class="rchip">${x[1]}</span>`:''}).join(''); }
-function accCardHTML(a,opts={}){
-  const b=opts.bal; const [pa,pb]=periodRange(state.ui.period,state.ui.anchor);
-  if(a==='all'){ const f=sum(P().accounts,x=>b[x.id]||0);
-    return `<button class="acard${opts.active?' on':''}" data-card="all" style="background:${ALL_GRAD};color:#fff"><span class="abank">All accounts</span><span class="aname">${P().accounts.length} accounts · total</span>
-      <span class="abal"><small>${esc(cur())}</small>${money(f)}</span><span class="aroles"><span class="rchip">Swipe to switch account →</span></span></button>`; }
-  const c=accColor(a), ink=accInk(c); const fl=accFlows(txBetween(pa,pb),a.id);
-  return `<button class="acard${opts.active?' on':''}" data-card="${esc(a.id)}" style="background:${accGrad(c)};color:${ink}">
-    <span class="achip"></span><span class="abank">${esc(a.bank||TYPE_LABEL[a.type]||'Account')}</span><span class="aname">${esc(a.name)}${a.last4?` · •••• ${esc(a.last4)}`:''}</span>
-    <span class="abal"><small>${esc(cur())}</small>${money(b[a.id]||0)}</span>
-    <span class="aflow"><span>↓ ${money(fl.inn)}</span><span>↑ ${money(fl.out)}</span></span>
-    <span class="aroles">${roleChips(a)}</span></button>`;
-}
-function walletCarouselHTML(){
-  const b=balances(); const ids=['all',...P().accounts.map(a=>a.id)]; const cur=state.ui.acct;
-  return `<div class="acc-wrap"><div class="acc-carousel" id="accCarousel">${ids.map(id=>accCardHTML(id==='all'?'all':acct(id),{bal:b,active:cur===id})).join('')}
-    <button class="acard add" data-act="editAcct" data-v="">＋<span>Add account</span></button></div>
-    <div class="acc-dots">${ids.map(id=>`<i class="${cur===id?'on':''}" style="${id!=='all'?`--dc:${accColor(acct(id))}`:''}"></i>`).join('')}</div></div>`;
-}
-let carouselIdx=null;
-function initCarousel(){
-  const el=$('#accCarousel'); if(!el) return;
-  const ids=['all',...P().accounts.map(a=>a.id)]; const idx=Math.max(0,ids.indexOf(state.ui.acct));
-  const card=el.children[idx]; if(card) el.scrollLeft=card.offsetLeft-el.offsetLeft-(el.clientWidth-card.clientWidth)/2;
-  carouselIdx=idx; let t=null;
-  const settle=()=>{ const mid=el.scrollLeft+el.clientWidth/2; let best=0,bd=1e9;
-    [...el.children].forEach((c,i)=>{ if(i>=ids.length) return; const cm=c.offsetLeft-el.offsetLeft+c.clientWidth/2; const d=Math.abs(cm-mid); if(d<bd){bd=d;best=i;} });
-    if(best!==carouselIdx){ carouselIdx=best; state.ui.acct=ids[best]; state.ui.openCat=null; buzz(8); const sl=el.scrollLeft; renderHomeBody(); const n=$('#accCarousel'); if(n) n.scrollLeft=sl; } };
-  el.addEventListener('scroll',()=>{ clearTimeout(t); t=setTimeout(settle,110);
-    const mid=el.scrollLeft+el.clientWidth/2; [...el.children].forEach(c=>{ const cm=c.offsetLeft-el.offsetLeft+c.clientWidth/2; const k=Math.min(1,Math.abs(cm-mid)/el.clientWidth); c.style.transform=`scale(${1-k*.08})`; c.style.opacity=String(1-k*.35); }); },{passive:true});
-  el.dispatchEvent(new Event('scroll'));
-}
-function renderHomeBody(){ // re-render Home without rebuilding the card carousel
-  const car=$('#accCarousel'); const sl=car?car.scrollLeft:0; render(false); const n=$('#accCarousel'); if(n){ n.scrollLeft=sl; } }
-
 /* account detail sheet */
 function openAccountSheet(id){
   const a=acct(id); if(!a) return; const c=accColor(a); const b=balances(); const [ma,mb]=periodRange('month',todayStr());
@@ -1719,11 +1629,6 @@ document.addEventListener('click',async e=>{
   const bk=e.target.closest('.bk');
   if(bk&&state._bk){const x=state._bk[+bk.dataset.i];const c=$('#chartCap');if(c&&x)c.textContent=`${x.full}: ${money(x.value)} ${cur()}${x.limit!=null?` · limit ${money(x.limit)}`:''}`;return;}
   const tb=e.target.closest('#tabs button[data-tab]'); if(tb){state.ui.tab=tb.dataset.tab;render();window.scrollTo(0,0);return;}
-  const card=e.target.closest('.acard[data-card]');
-  if(card&&card.closest('#accCarousel')){ const car=$('#accCarousel'); const id=card.dataset.card;
-    if(id!==state.ui.acct){ car.scrollTo({left:card.offsetLeft-car.offsetLeft-(car.clientWidth-card.clientWidth)/2,behavior:'smooth'}); }
-    else if(id!=='all') openAccountSheet(id);
-    return; }
   const el=e.target.closest('[data-act]'); if(!el) return;
   const a=el.dataset.act,v=el.dataset.v,u=state.ui,p=P(),d=draft;
   switch(a){
@@ -1990,7 +1895,7 @@ let lockMode='unlock',busyLock=false,lastActive=Date.now(),hiddenAt=null,lockTic
 function showLock(kind,msg){
   lockMode=kind; document.body.classList.add('locked'); $('#main').hidden=true; $('#lock').hidden=false; applyTheme();
   const L=$('#lock'); const wait=Math.max(0,Math.ceil((secMeta.lockUntil-Date.now())/1000));
-  if(kind==='setup') L.innerHTML=`<div class="lockbox"><img class="lock-logo" src="./logo-mark.jpg" alt=""><h1>Keep your money private</h1>
+  if(kind==='setup') L.innerHTML=`<div class="lockbox"><img class="lock-logo" src="./images/logo-mark.jpg" alt=""><h1>Keep your money private</h1>
     <p>Choose a passcode. Everything you record is encrypted with it and stays on this iPhone — nothing is uploaded, and nobody (including the app’s maker) can read it.</p>
     <input type="text" autocomplete="username" value="Masroof" hidden aria-hidden="true">
     <input class="inp" id="p1" type="password" autocomplete="new-password" placeholder="New passcode, 6+ characters" aria-label="New passcode">
@@ -2006,7 +1911,7 @@ function showLock(kind,msg){
     <input class="inp" id="rp" type="password" autocomplete="current-password" placeholder="Backup passcode" aria-label="Backup passcode">
     <p class="err" id="lockErr">${esc(msg||'')}</p><button class="btn primary" data-act="lkRestore">Restore</button>
     <button class="btn link" data-act="lkCancelRestore" style="align-self:center">Cancel</button></div>`;
-  else L.innerHTML=`<div class="lockbox"><img class="lock-logo" src="./logo-mark.jpg" alt=""><h1>Welcome back</h1>
+  else L.innerHTML=`<div class="lockbox"><img class="lock-logo" src="./images/logo-mark.jpg" alt=""><h1>Welcome back</h1>
     <p>Enter your passcode to open Masroof.</p>
     <input type="text" autocomplete="username" value="Masroof" hidden aria-hidden="true">
     <input class="inp" id="pu" type="password" autocomplete="current-password" placeholder="Passcode" aria-label="Passcode"${wait?' disabled':''}>

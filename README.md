@@ -24,14 +24,14 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 ## Files
 
 ```
-index.html          page shell
-app.css             design (light + dark)
-app.js              the app
-sw.js               offline cache — bump VERSION when you update the app
-manifest.json       Home Screen app settings
-logo.jpg, logo-mark.jpg, icon-*.png
-ocr/                on-device receipt reader (tesseract.js + English data)
-.nojekyll           tells GitHub Pages to serve files as-is
+index.html        page shell
+sw.js             offline cache — bump VERSION when you update the app
+manifest.json     Home Screen app settings
+css/app.css       design (light + dark)
+js/app.js         the app: storage, encryption, screens, receipt and SMS reading
+images/           logo and Home Screen icons
+ocr/              on-device receipt reader (tesseract.js + English data, with licences)
+.nojekyll         tells GitHub Pages to serve files as-is
 ```
 
 ## Put it on your iPhone
