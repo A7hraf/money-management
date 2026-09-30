@@ -10,6 +10,8 @@ const todayStr=()=>ymd(new Date());
 const newId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+// the version shown in Settings › About; version.json on the site holds the newest one
+const APP_VERSION='3.1';
 // language: English or Arabic (the Arabic words live in js/i18n.js). Day/month names switch in place.
 let LANG='en';
 const MONTHS_EN=MONTHS.slice(), MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -796,6 +798,44 @@ function viewWealth(){
 const goalSaved=g=>g.accountId&&acct(g.accountId)?(balances()[g.accountId]||0):(+g.saved||0);
 
 /* ---------- Settings ---------- */
+// big tiles at the top of Settings for the things people look for most
+function quickSettingsHTML(){
+  const S=P().sms||{}; const tile=(ic,t,sub,act,extra='',on=false)=>`<button class="qs-t${on?' on':''}" data-act="${act}"${extra}><span class="qs-i">${ic}</span><b>${t}</b><small>${sub}</small></button>`;
+  return `<div class="qs">
+    ${tile(FACE_ICON,'Face ID',!bioCapable&&!hasBio?'Not on this device':hasBio?'On':'Off — tap to turn on',bioCapable||hasBio?'bioToggle':'bioInfo','',hasBio)}
+    ${tile('✉️','Bank SMS',S.setup?'Import now':'Set up',S.setup?'smsFile':'smsGuide')}
+    ${tile('🔔','Reminders','Add to Calendar','reminders')}
+    ${tile('📄','Monthly report','PDF or CSV','export')}
+    ${tile('💳','Accounts',`${P().accounts.length} accounts`,'acctBulk')}
+    ${tile('🌐','Language',`<span data-notr>${LANG==='ar'?'English':'العربية'}</span>`,'lkLang')}
+  </div>`;
+}
+function openWhatsNew(){
+  const row=(ic,t,d,act,btn)=>`<div class="wn"><span class="wn-i">${ic}</span><div><b>${t}</b><p>${d}</p>${act?`<button class="btn small primary" data-act="${act}">${btn}</button>`:''}</div></div>`;
+  dlg('What’s new in Masroof',`<p class="hint" style="margin-top:0">Version <span data-notr>${APP_VERSION}</span>. Everything is also in Settings.</p>
+    ${row(FACE_ICON,'Face ID unlock','Open Masroof with your face. Your passcode still works.',bioCapable&&!hasBio?'bioToggle':'',bioCapable&&!hasBio?'Turn on Face ID':'')}
+    ${row('✉️','Bank SMS, automatically','Your iPhone saves each bank SMS; Masroof adds them in one tap, on the right account.','smsGuide','Set up bank SMS')}
+    ${row('🔔','Reminders in Calendar','Bills, credit card and loan due dates as alerts, even when Masroof is closed.','reminders','Add reminders')}
+    ${row('📄','Monthly PDF report','A tidy report of any month to save or share.','export','Make a report')}
+    ${row('💳','Credit cards','Statement, amount due, minimum payment and available credit. Add the details in Accounts & cards.','','')}
+    ${row('🌐','العربية','التطبيق بالكامل باللغة العربية.','lkLang',LANG==='ar'?'English':'العربية')}`,
+    `<span class="spacer"></span><button class="btn primary" data-act="close">Got it</button>`);
+  const b=$('#dlg .dlg-b [data-act=lkLang]'); if(b) b.setAttribute('data-notr','');
+}
+/* updates: version.json on the site says which version is newest */
+let updateReady=false;
+function checkUpdate(manual){
+  if(!navigator.onLine){ if(manual) toast('You’re offline'); return; }
+  fetch('./version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(j=>{
+    if(j&&j.version&&j.version!==APP_VERSION){ updateReady=true; showUpdateBar(j.version); }
+    else if(manual) toast('You have the latest version');
+  }).catch(()=>{ if(manual) toast('Couldn’t check — try again when online'); });
+}
+function showUpdateBar(v){ let b=$('#updbar'); if(!b){ b=document.createElement('div'); b.id='updbar'; document.body.appendChild(b); }
+  b.innerHTML=`<span>✨ <b>A new version of Masroof is ready</b></span><button data-act="doUpdate">Update</button>`; b.hidden=false; }
+async function doUpdate(){ try{ await saveNow(); }catch(e){} // your data stays: only the app's own files are refreshed
+  try{ for(const k of await caches.keys()) await caches.delete(k); const r=await navigator.serviceWorker.getRegistration(); if(r) await r.update(); }catch(e){}
+  location.reload(); }
 const ago=ts=>{ if(!ts) return 'never'; const m=Math.round((Date.now()-ts)/60000); return m<1?'just now':m<60?`${m} min ago`:m<1440?`${Math.round(m/60)} h ago`:`${Math.round(m/1440)} day${m<2880?'':'s'} ago`; };
 function smsSettingsHTML(){
   const S=P().sms||{}; const linked=P().accounts.filter(a=>acctNums(a).length);
@@ -877,6 +917,7 @@ function viewSettings(){
   const rec=p.recurring.slice().sort((a,b)=>a.next<b.next?-1:1);
   const accOpen=(k,title,id)=>`<details class="panel acc"${id?` id="${id}"`:''} data-k="${k}"${(state.ui.sOpen||{})[k]?' open':''}><summary>${title}</summary>`;
   return `<div class="phead back-row"><button class="back" data-act="tab" data-v="home">${ICON.left} Home</button></div>`+pageHead('Settings','Make it yours',`<button class="round" data-act="lockNow" aria-label="Lock now">${ICON.lock}</button>`)+`<div class="plan">
+  ${quickSettingsHTML()}
   ${accOpen("Bank SMS","Bank SMS — automatic")}<div class="acc-b">${smsSettingsHTML()}</div></details>
   ${accOpen("Reminders","Reminders")}<div class="acc-b"><p class="hint" style="margin-top:0">Bills, credit card and loan due dates — and a daily nudge to import bank SMS — as alerts in your iPhone Calendar.</p>
     <button class="btn primary" data-act="reminders">Set up reminders</button>${P().remind&&P().remind.last?`<p class="hint">Last added ${ago(P().remind.last)}.</p>`:''}</div></details>
@@ -937,7 +978,9 @@ function viewSettings(){
     <div class="bar" style="margin:12px 0 0"><button class="btn" data-act="export">Reports &amp; export</button>
       ${allTx().some(t=>t.demo)||p.people.some(x=>x.demo)?'<button class="btn" data-act="clearDemo">Remove demo data</button>':'<button class="btn" data-act="demo">Load demo data</button>'}
       <button class="btn danger" data-act="wipe">Erase everything</button></div></div></details>
-  ${accOpen("About","About")}<div class="acc-b"><div class="about-wrap"><img class="about-logo" src="${LOGO_FULL()}" alt="Masroof — SMS money manager"></div><p class="hint" style="margin-top:10px">Masroof · your money, every account, in one place. Private by design: no accounts, no servers, no tracking.</p></div></details></div>`;
+  ${accOpen("About","About")}<div class="acc-b"><div class="about-wrap"><img class="about-logo" src="${LOGO_FULL()}" alt="Masroof — SMS money manager"></div><p class="hint" style="margin-top:10px">Masroof · your money, every account, in one place. Private by design: no accounts, no servers, no tracking.</p>
+    <div class="rows"><div class="rw"><span>Version</span><b data-notr>${APP_VERSION}</b></div></div>
+    <div class="bar" style="margin-top:12px"><button class="btn" data-act="whatsNew">What’s new</button><button class="btn" data-act="checkUpdate">Check for updates</button></div></div></details></div>`;
 }
 
 /* ===== v4 widgets ===== */
@@ -2342,6 +2385,10 @@ document.addEventListener('click',async e=>{
     case 'lkCreate': if(!busyLock) lkCreate(); break;
     case 'lkUnlock': lkUnlock(); break;
     case 'lkBio': bioUnlock(); break;
+    case 'whatsNew': openWhatsNew(); break;
+    case 'checkUpdate': checkUpdate(true); break;
+    case 'doUpdate': doUpdate(); break;
+    case 'bioInfo': toast('Face ID unlock needs an iPhone with Face ID or Touch ID and iOS 18 or later'); break;
     case 'lkLang': secMeta.lang=LANG==='ar'?'en':'ar'; saveSec(); setLang(secMeta.lang,true); break;
     case 'bioToggle': { if(vaultRec&&vaultRec.bio){ delete vaultRec.bio; hasBio=false; await saveNow(); toast('Face ID unlock turned off'); render(false); break; }
       try{ await bioEnable(); toast('Face ID unlock is on'); }catch(e){ toast(e&&e.message==='noprf'?'Face ID unlock needs iOS 18 or later':e&&e.name==='NotAllowedError'?'Cancelled':'Couldn’t turn on Face ID',{bad:true}); } render(false); break; }
@@ -2547,6 +2594,7 @@ function showLock(kind,msg){
     <button class="btn primary" data-act="lkUnlock"${wait?' disabled':''}>Unlock</button>
     <button class="btn link" data-act="lkForgot" style="align-self:center">Forgot passcode?</button>${langLink()}</div>`;
   if(wait&&kind==='unlock') setTimeout(()=>{ if(lockMode==='unlock'&&!DEK) showLock('unlock'); },1000*Math.min(wait,5));
+  if(!L.querySelector('.lock-ver')) L.querySelector('.lockbox').insertAdjacentHTML('beforeend',`<p class="lock-ver" data-notr>Masroof ${APP_VERSION}</p>`);
   if(!(kind==='unlock'&&hasBio)) setTimeout(()=>{const i=L.querySelector('input.inp:not([disabled])'); if(i) i.focus();},80); // with Face ID, don't pop up the keyboard
 }
 const langLink=()=>`<button class="btn link lang-link" data-act="lkLang" data-notr style="align-self:center">${LANG==='ar'?'English':'العربية'}</button>`;
@@ -2586,6 +2634,7 @@ function afterUnlock(isNew){
   document.body.classList.remove('locked'); $('#lock').hidden=true; $('#lock').innerHTML=''; $('#main').hidden=false;
   fillProfile(); state.ready=true; lastActive=Date.now(); openDay=todayStr();
   if(!isNew) runRecurring();
+  if(state.profile.seenVersion!==APP_VERSION){ const first=isNew||!state.profile.seenVersion&&!allTx().length; state.profile.seenVersion=APP_VERSION; persist('profile'); if(!first) setTimeout(()=>{ if(!$('#dlg').open) openWhatsNew(); },900); }
   state.ui.tab='home'; render(); window.scrollTo(0,0);
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().then(v=>{persistGranted=v;}).catch(()=>{});
   setTimeout(cleanReceipts,3000);
@@ -2663,7 +2712,7 @@ async function lkRestore(){
 ['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,()=>{lastActive=Date.now()},{passive:true,capture:true}));
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){ hiddenAt=Date.now(); saveNow(); if(DEK&&+secMeta.autoLock===0) lockNow(); }
-  else { const away=hiddenAt?Date.now()-hiddenAt:0; hiddenAt=null; checkForUpdate();
+  else { const away=hiddenAt?Date.now()-hiddenAt:0; hiddenAt=null; checkForUpdate(); if(away>60000) checkUpdate(false);
     if(DEK&&away>Math.max(1,+secMeta.autoLock)*60000) lockNow().then(reloadIfLocked);
     else if(!DEK&&away>30000) reloadIfLocked();
     newDayCheck(); }
@@ -2779,6 +2828,7 @@ async function boot(){
   $('#main').innerHTML='';
   showLock(v?'unlock':'setup'); booted=true;
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')) navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});
+  setTimeout(()=>checkUpdate(false),1500);
 }
 
 boot();

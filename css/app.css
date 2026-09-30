@@ -811,3 +811,25 @@ button.bankchk{width:100%;text-align:left;color:inherit;font:inherit}
 [dir=rtl] .sb-go{transform:none}
 [dir=rtl] .cat-list .chev,[dir=rtl] .cats .chev{transform:scaleX(-1)}
 [dir=rtl] .lang-link{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+
+/* ===== v15: quick settings, what's new, update bar ===== */
+.qs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 14px}
+.qs-t{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:108px;padding:12px;border-radius:18px;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow);text-align:start;color:var(--ink);font:inherit}
+.qs-t .qs-i{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--sunk);font-size:19px;margin-bottom:4px}
+.qs-t .qs-i svg{width:22px;height:22px}
+.qs-t b{font-size:14.5px;line-height:1.2}
+.qs-t small{font-size:12px;color:var(--muted);line-height:1.25}
+.qs-t.on .qs-i{background:linear-gradient(135deg,var(--brand-2),var(--brand-3));color:#fff}
+.qs-t.on small{color:var(--earn);font-weight:700}
+.qs-t:active{transform:scale(.97)}
+.wn{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+.wn:first-of-type{border-top:0}
+.wn .wn-i{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--sunk);font-size:20px}
+.wn .wn-i svg{width:22px;height:22px}
+.wn b{font-size:15.5px}
+.wn p{margin:2px 0 8px;font-size:14px;color:var(--ink-2);line-height:1.45}
+#updbar{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:90;max-width:560px;margin:0 auto;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px;border-radius:18px;color:#fff;
+  background:linear-gradient(135deg,#0B2545,#0E6B66);box-shadow:0 14px 30px -12px rgba(6,21,41,.6);font-size:14px}
+#updbar span{flex:1}
+#updbar button{flex:none;border:0;background:#fff;color:#0B2545;font-weight:800;padding:9px 16px;border-radius:99px;font-size:14px}
+.lock-ver{margin:6px 0 0;text-align:center;font-size:12px;color:rgba(255,255,255,.45)}
