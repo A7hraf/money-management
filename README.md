@@ -17,10 +17,18 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
   - list items with tax, service and discount
   - split with friends (equally, by amount or by item)
   - record refunds, foreign currency, repeating payments, installments and tags
-- **Scan a receipt** to fill in the items, tax and total, or **paste bank SMS** messages to import them.
+- **Scan a receipt** to fill in the items, tax and total.
+- **Bank SMS, automatically:** an iPhone Shortcuts automation saves every bank SMS to a file in the background, and Masroof imports it in one tap. See [Bank SMS](#bank-sms) below.
+  - reads English and Arabic messages (including Arabic digits and ر.ع)
+  - puts each message on the right account using the card or account's last 4 digits, or the bank's name
+  - turns a debit from one of your accounts and a credit into another into a single transfer, and an ATM withdrawal into a transfer to Cash
+  - ignores OTPs, declined payments and balance amounts
+  - skips messages it has already imported, so you can import the same file every time
+  - "Add without asking" adds messages from known cards straight away; anything unclear waits for you
+  - remembers the balance the bank reports, and shows on each account whether Masroof matches it
 - **Activity:** filter by month, type, category or account, or search every month at once. The calendar view tints each day by how much you spent; tap a day to see it. Swipe a row to repeat, edit or delete it.
 - **Friends:** who owes whom, settle up, and copy a reminder. Loans can have a pay-back date; it shows on the friend and in "Coming up", and turns red when overdue.
-- **Wealth:** net worth, account cards, investments with gain/loss, and savings goals.
+- **Wealth:** net worth, your cards stacked like Apple Wallet, investments with gain/loss, and savings goals. **Add several accounts at once** (bank, type, last 4 digits, balance), from Wealth or Settings → Accounts & cards.
 - **Settings:** a month that starts on your payday (e.g. 25th to 24th), budgets, repeating payments, categories and items, and Home sections. Security settings are here too: auto-lock, change passcode, and encrypted backup/restore. You can also export a CSV.
 
 ## Files
@@ -45,6 +53,18 @@ ocr/              on-device receipt reader (tesseract.js + English data, with li
 5. Open **Masroof** from the new icon and create your passcode.
 
 Only the app's code is on GitHub. Your data never goes there.
+
+## Bank SMS
+
+Apple doesn't let any app read your text messages. Your iPhone's Shortcuts app can save them for Masroof instead:
+
+1. Open **Shortcuts → Automation → + → Message**.
+2. Set **Message Contains** to `OMR`, choose **Run Immediately**, turn off **Notify When Run**, then tap **Next → New Blank Automation**.
+3. Add a **Text** action containing `=====`, a new line, **Current Date** (Date Format: **ISO 8601**), a new line, and **Shortcut Input**.
+4. Add **Append to Text File** with the path `Masroof/bank-sms.txt`, and turn on **Make New Line**.
+5. If your bank texts in Arabic, make a second automation with **Message Contains** `ر.ع`.
+
+Every bank SMS is now added to *iCloud Drive › Shortcuts › Masroof › bank-sms.txt*, even while Masroof is closed. In Masroof, tap **Import bank SMS** (Home, or Settings → Bank SMS) and pick that file. The same steps are in the app, under **Settings → Bank SMS → Set it up**.
 
 ## Things to know
 
