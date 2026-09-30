@@ -11,15 +11,17 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
   - spending for the day, week, month or year, with income, saved and left
   - daily limit (fixed or smart), quick add (`karak 0.2 cash`) and one-tap buttons for frequent purchases
   - budgets, where the money went, "For you" insights, a monthly recap story and a this-month-vs-last chart
+  - a month-end forecast of what you'll have left, from your balance, scheduled payments and your usual spending
+  - an eye button that hides every amount, for using the app in public
 - **Add:** expense, income, transfer, lend/borrow and investments. You can also:
   - list items with tax, service and discount
   - split with friends (equally, by amount or by item)
   - record refunds, foreign currency, repeating payments, installments and tags
 - **Scan a receipt** to fill in the items, tax and total, or **paste bank SMS** messages to import them.
-- **Activity:** search and filter by month, type, category or account. Swipe a row to repeat, edit or delete it.
-- **Friends:** who owes whom, settle up, and copy a reminder.
+- **Activity:** filter by month, type, category or account, or search every month at once. The calendar view tints each day by how much you spent; tap a day to see it. Swipe a row to repeat, edit or delete it.
+- **Friends:** who owes whom, settle up, and copy a reminder. Loans can have a pay-back date; it shows on the friend and in "Coming up", and turns red when overdue.
 - **Wealth:** net worth, account cards, investments with gain/loss, and savings goals.
-- **Settings:** budgets, repeating payments, categories and items, and Home sections. Security settings are here too: auto-lock, change passcode, and encrypted backup/restore. You can also export a CSV.
+- **Settings:** a month that starts on your payday (e.g. 25th to 24th), budgets, repeating payments, categories and items, and Home sections. Security settings are here too: auto-lock, change passcode, and encrypted backup/restore. You can also export a CSV.
 
 ## Files
 
