@@ -1,7 +1,7 @@
 // Masroof offline cache. It only stores the app's own files — never your data.
 // The app's code is fetched fresh whenever the phone is online, so a push to GitHub shows up
 // the next time the app is opened. The cached copy is only used offline.
-const VERSION = 'masroof-v8';
+const VERSION = 'masroof-v9';
 const CORE = ['./', './index.html', './css/app.css', './js/i18n.js', './js/app.js', './manifest.json', './images/logo.jpg', './images/logo-mark.jpg', './images/icon-180.png', './images/icon-192.png', './images/icon-512.png'];
 const OCR = ['./ocr/tesseract.min.js', './ocr/worker.min.js', './ocr/tesseract-core-simd-lstm.wasm.js', './ocr/tesseract-core-lstm.wasm.js', './ocr/lang/eng.traineddata.gz'];
 // cache:'reload' skips the browser's own HTTP cache, which could otherwise hand back a stale copy
