@@ -1,5 +1,5 @@
 // Masroof offline cache. It only stores the app's own files — never your data.
-const VERSION = 'masroof-v1';
+const VERSION = 'masroof-v2';
 const CORE = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 const OCR = ['./ocr/tesseract.min.js', './ocr/worker.min.js', './ocr/tesseract-core-simd-lstm.wasm.js', './ocr/tesseract-core-lstm.wasm.js', './ocr/lang/eng.traineddata.gz'];
 self.addEventListener('install', e => {
