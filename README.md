@@ -29,7 +29,12 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 - **Activity:** filter by month, type, category or account, or search every month at once. The calendar view tints each day by how much you spent; tap a day to see it. Swipe a row to repeat, edit or delete it.
 - **Friends:** who owes whom, settle up, and copy a reminder. Loans can have a pay-back date; it shows on the friend and in "Coming up", and turns red when overdue.
 - **Wealth:** net worth, your cards stacked like Apple Wallet, investments with gain/loss, and savings goals. **Add several accounts at once** (bank, type, last 4 digits, balance), from Wealth or Settings → Accounts & cards.
-- **Settings:** a month that starts on your payday (e.g. 25th to 24th), budgets, repeating payments, categories and items, and Home sections. Security settings are here too: auto-lock, change passcode, and encrypted backup/restore. You can also export a CSV.
+- **Credit cards:** add the limit, statement day and due day. Each card then shows its statement balance, what's left to pay, the due date, the minimum payment and your available credit, with a **Pay** button. Card payments that are due also appear in "Coming up".
+- **Reminders in Calendar:** Masroof can't send notifications itself, so it exports your bills, card and loan due dates, plus an optional daily "import bank SMS" reminder, to your iPhone Calendar. Calendar then alerts you even when Masroof is closed.
+- **Monthly PDF report** from Activity's export button: a summary, categories against budgets, a day-by-day chart, top places, account balances and every transaction. It's made on the phone, even offline.
+- **Face ID unlock** (iOS 18 or later): your passcode still works, and backups never include the Face ID key.
+- **Arabic:** switch the language in Settings → General or on the lock screen. The whole app switches to Arabic with a right-to-left layout, and amounts keep Western digits.
+- **Settings:** a month that starts on your payday (e.g. 25th to 24th), budgets that can carry unspent money into next month, repeating payments, categories and items, and Home sections. Security settings are here too: auto-lock, change passcode, and encrypted backup/restore. You can also export a CSV.
 
 ## Files
 
@@ -39,6 +44,7 @@ sw.js             offline cache (fetches fresh code when online, cached copy off
 manifest.json     Home Screen app settings
 css/app.css       design (light + dark)
 js/app.js         the app: storage, encryption, screens, receipt and SMS reading
+js/i18n.js        Arabic words for every screen
 images/           logo and Home Screen icons
 ocr/              on-device receipt reader (tesseract.js + English data, with licences)
 .nojekyll         tells GitHub Pages to serve files as-is
