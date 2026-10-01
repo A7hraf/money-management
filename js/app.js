@@ -11,7 +11,7 @@ const newId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).sl
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 // the version shown in Settings › About; version.json on the site holds the newest one
-const APP_VERSION='3.2';
+const APP_VERSION='3.3';
 // language: English or Arabic (the Arabic words live in js/i18n.js). Day/month names switch in place.
 let LANG='en';
 const MONTHS_EN=MONTHS.slice(), MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -816,7 +816,7 @@ function quickSettingsHTML(){
 function openWhatsNew(){
   const row=(ic,t,d,act,btn)=>`<div class="wn"><span class="wn-i">${ic}</span><div><b>${t}</b><p>${d}</p>${act?`<button class="btn small primary" data-act="${act}">${btn}</button>`:''}</div></div>`;
   dlg('What’s new in Masroof',`<p class="hint" style="margin-top:0">Version <span data-notr>${APP_VERSION}</span>. Everything is also in Settings.</p>
-    ${row('🌍','Your spending world','A 3D globe of where you spent and when — play it month by month.','openMap','Open the map')}
+    ${row('🌍','Your spending world','A real 3D Earth with city lights: glowing bars where you spent, arcs from home, and a month-by-month replay. Night or day view.','openMap','Open the map')}
     ${row(FACE_ICON,'Face ID unlock','Open Masroof with your face. Your passcode still works.',bioCapable&&!hasBio?'bioToggle':'',bioCapable&&!hasBio?'Turn on Face ID':'')}
     ${row('✉️','Bank SMS, automatically','Your iPhone saves each bank SMS; Masroof adds them in one tap, on the right account.','smsGuide','Set up bank SMS')}
     ${row('🔔','Reminders in Calendar','Bills, credit card and loan due dates as alerts, even when Masroof is closed.','reminders','Add reminders')}
@@ -1610,63 +1610,74 @@ function mapPlaces(period){
   return Object.values(by).map(o=>{ const top=Object.entries(o.cats).sort((a,b)=>b[1]-a[1])[0]; o.color=top?cat(top[0]).color:'#1FA2A0'; o.topCat=top&&top[0]; o.tx.sort((a,b)=>a.date<b.date?1:-1); return o; }).sort((a,b)=>b.total-a.total);
 }
 const mapMonths=()=>{ const ks=Object.keys(state.months).filter(k=>(state.months[k]||[]).some(t=>t.type==='expense')).sort(); return ks; };
-let globe=null, miniGlobe=null, mapState={period:'all',sel:null,playing:false,timer:null};
+let globe=null, miniGlobe=null, mapState={period:'all',sel:null,playing:false,timer:null,style:'night'};
+const spotOf=p=>({id:p.key,lat:p.lat,lng:p.lng,value:p.total,color:p.color,label:esc(geoName(p.name)),amount:money(p.total)});
 function openMap(){
-  closeMap(); const months=mapMonths(); mapState.period='all'; mapState.sel=null;
-  const v=document.createElement('div'); v.id='mapv'; v.className='mapv'; document.body.appendChild(v); document.body.classList.add('map-open');
-  v.innerHTML=`<div class="mv-top"><button class="mv-x" data-act="mapClose" aria-label="Close">×</button><div class="mv-h"><h2>Where your money went</h2><small id="mvSub"></small></div></div>
-    <div class="mv-globe"><canvas id="globeC" aria-label="Spending globe"></canvas><div class="mv-hint">Drag to spin · pinch to zoom · tap a light</div></div>
-    <div class="mv-time"><button class="mv-play" data-act="mapPlay" aria-label="Play months">▶</button><input type="range" id="mvRange" min="0" max="${months.length}" value="${mapState.period==='all'?months.length:months.indexOf(mapState.period)}" aria-label="Month"><span id="mvWhen"></span></div>
-    <div class="mv-sheet" id="mvSheet"></div>`;
-  globe=window.MasroofGlobe(document.getElementById('globeC'),{lat:homeCity().lat-22,lng:homeCity().lng,dark:()=>true,onPick:s=>{ mapState.sel=s.id; renderMapSheet(); buzz(8); }});
-  v.querySelector('#mvRange').addEventListener('input',e=>{ stopPlay(); const i=+e.target.value; mapState.period=i>=months.length?'all':months[i]; mapState.sel=null; updateMap(true); });
-  mapState.months=months; updateMap(true); trTree(v);
-  requestAnimationFrame(()=>v.classList.add('in'));
+  closeMap(); const months=mapMonths(); mapState.period='all'; mapState.sel=null; mapState.months=months; mapState.style=P().mapStyle||'night';
+  const h=homeCity(); const v=document.createElement('div'); v.id='mapv'; v.className='mapv'; document.body.appendChild(v); document.body.classList.add('map-open');
+  v.innerHTML=`<div class="mv-globe" id="mvGlobe"></div>
+    <div class="mv-top"><button class="mv-x" data-act="mapClose" aria-label="Close">×</button>
+      <div class="mv-h"><h2>Where your money went</h2><small id="mvSub"></small></div>
+      <div class="mv-style" role="group" aria-label="Map style"><button data-act="mapStyle" data-v="night" aria-pressed="${mapState.style==='night'}">🌙</button><button data-act="mapStyle" data-v="day" aria-pressed="${mapState.style==='day'}">☀️</button></div></div>
+    <div class="mv-bottom">
+      <div class="mv-detail" id="mvDetail" hidden></div>
+      <div class="mv-cards" id="mvCards"></div>
+      <div class="mv-time"><button class="mv-play" data-act="mapPlay" aria-label="Play months">▶</button>
+        <div class="mv-track"><input type="range" id="mvRange" min="0" max="${months.length}" value="${months.length}" aria-label="Month"><div class="mv-ticks">${months.map(k=>`<i></i>`).join('')}<i></i></div></div>
+        <span id="mvWhen"></span></div>
+    </div>`;
+  const el=$('#mvGlobe'), opts={home:{lat:h.lat,lng:h.lng},style:mapState.style,onPick:s=>{ mapState.sel=s.id; renderMapCards(); renderMapDetail(); buzz(8); }};
+  globe=window.MasroofGlobe3D&&window.MasroofGlobe3D(el,opts);
+  if(!globe){ el.innerHTML='<canvas id="globeC"></canvas>'; globe=window.MasroofGlobe(document.getElementById('globeC'),{lat:h.lat-22,lng:h.lng,dark:()=>true,onPick:opts.onPick}); }
+  v.querySelector('#mvRange').addEventListener('input',e=>{ stopPlay(); const i=+e.target.value; mapState.period=i>=months.length?'all':months[i]; updateMap(); });
+  updateMap(); trTree(v); requestAnimationFrame(()=>v.classList.add('in'));
 }
 function closeMap(){ stopPlay(); if(globe){ globe.stop(); globe=null; } const v=$('#mapv'); if(v) v.remove(); document.body.classList.remove('map-open'); }
-function updateMap(animate){
-  const places=mapPlaces(mapState.period); mapState.places=places;
-  if(globe) globe.setSpots(places.map(p=>({id:p.key,lat:p.lat,lng:p.lng,value:p.total,color:p.color,label:geoName(p.name)})),animate);
+function updateMap(){
+  const places=mapPlaces(mapState.period); mapState.places=places; if(mapState.sel&&!places.some(p=>p.key===mapState.sel)) mapState.sel=null;
+  if(globe){ globe.setSpots(places.map(spotOf),true); if(globe.select&&mapState.sel) globe.select(mapState.sel); }
   const total=sum(places,p=>p.total);
   const w=$('#mvWhen'); if(w) w.innerHTML=`<b>${esc(mapState.period==='all'?tr('All time'):MONTHS[+mapState.period.slice(5)-1]+' '+mapState.period.slice(0,4))}</b><span>${money(total)} ${esc(cur())}</span>`;
   const sub=$('#mvSub'); if(sub) sub.textContent=`${places.length} place${places.length===1?'':'s'} · ${money(total)} ${cur()}`;
   const r=$('#mvRange'); if(r) r.value=mapState.period==='all'?mapState.months.length:mapState.months.indexOf(mapState.period);
-  renderMapSheet();
+  renderMapCards(); renderMapDetail();
 }
-function renderMapSheet(){
-  const el=$('#mvSheet'); if(!el) return; el.scrollTop=0; const places=mapState.places||[]; const p=places.find(x=>x.key===mapState.sel);
-  const geoOff=!P().geo;
-  if(p){ // one place: when you spent there
-    const all=mapPlaces('all').find(x=>x.key===p.key)||p; const byM={}; for(const t of all.tx){ const k=t.date.slice(0,7); byM[k]=(byM[k]||0)+myShare(t); }
-    const ms=mapState.months.slice(-12); const mx=Math.max(1e-9,...ms.map(k=>byM[k]||0));
-    el.innerHTML=`<div class="mv-pl-h"><span class="mv-dot" style="background:${p.color}"></span><div><b data-notr>${esc(geoName(p.name))}</b><small>${p.count} purchase${p.count===1?'':'s'} · ${cat(p.topCat).icon||''} ${esc(cat(p.topCat).name)}</small></div><b class="mv-amt">${money(p.total)}</b><button class="icon-btn" data-act="mapBack" aria-label="Back">×</button></div>
-      <div class="mv-months">${ms.map(k=>`<button class="mv-m${k===mapState.period?' on':''}" data-act="mapMonth" data-v="${k}"><i style="height:${Math.max(3,(byM[k]||0)/mx*44)}px;background:${byM[k]?p.color:'var(--line)'}"></i><span>${monS(+k.slice(5)-1)}</span></button>`).join('')}</div>
-      <div class="tx-group">${p.tx.slice(0,8).map(txRow).join('')}</div>${p.tx.length>8?`<p class="hint" style="text-align:center">+${p.tx.length-8} more</p>`:''}
-      ${p.how&&p.how.home&&!p.how.gps?`<p class="hint">Some of these have no location, so they’re shown at your home city.</p>`:''}`;
-    return; }
-  el.innerHTML=`${geoOff?`<div class="mv-geo"><span>📍</span><span><b>Pin new expenses where you are</b><small>Uses your iPhone’s location when you add an expense — stays encrypted on this phone.</small></span><button class="btn small primary" data-act="geoOn">Turn on</button></div>`:''}
-    ${places.length?`<div class="mv-list">${places.map((x,i)=>`<button class="mv-row" data-act="mapPick" data-v="${esc(x.key)}"><span class="mv-rank">${i+1}</span><span class="mv-dot" style="background:${x.color}"></span><span class="mv-nm"><b data-notr>${esc(geoName(x.name))}</b><small>${x.count} purchase${x.count===1?'':'s'} · last ${shortD(x.tx[0].date)}</small></span><b class="mv-amt">${money(x.total)}</b></button>`).join('')}</div>`
-      :`<div class="empty"><span class="big-emoji">🌍</span>No spending in this period.</div>`}`;
+function renderMapCards(){
+  const el=$('#mvCards'); if(!el) return; const places=mapState.places||[]; const max=Math.max(1e-9,...places.map(p=>p.total));
+  el.innerHTML=(!P().geo?`<button class="mv-card geo" data-act="geoOn"><span class="mc-ic">📍</span><b>Pin where you spend</b><small>Turn on location for new expenses</small></button>`:'')+
+    (places.length?places.map((p,i)=>`<button class="mv-card${p.key===mapState.sel?' on':''}" data-act="mapPick" data-v="${esc(p.key)}" style="--c:${p.color}">
+      <span class="mc-top"><span class="mc-rank">${i+1}</span><span class="mc-dot"></span></span><b data-notr>${esc(geoName(p.name))}</b><span class="mc-amt">${money(p.total)}</span>
+      <span class="mc-bar"><i style="width:${Math.max(6,p.total/max*100)}%"></i></span><small>${p.count} purchase${p.count===1?'':'s'}</small></button>`).join('')
+    :`<div class="mv-card empty"><b>No spending</b><small>Nothing in this period</small></div>`);
+  const on=el.querySelector('.mv-card.on'); if(on) on.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});
+}
+function renderMapDetail(){
+  const el=$('#mvDetail'); if(!el) return; const p=(mapState.places||[]).find(x=>x.key===mapState.sel);
+  if(!p){ el.hidden=true; el.innerHTML=''; return; }
+  const all=mapPlaces('all').find(x=>x.key===p.key)||p; const byM={}; for(const t of all.tx){ const k=t.date.slice(0,7); byM[k]=(byM[k]||0)+myShare(t); }
+  const ms=mapState.months.slice(-12); const mx=Math.max(1e-9,...ms.map(k=>byM[k]||0));
+  el.hidden=false;
+  el.innerHTML=`<div class="mvd-h"><span class="mvd-dot" style="background:${p.color}"></span><div><b data-notr>${esc(geoName(p.name))}</b><small>${p.count} purchase${p.count===1?'':'s'} · ${cat(p.topCat).icon||''} ${esc(cat(p.topCat).name)}</small></div><b class="mvd-amt">${money(p.total)}</b><button class="mv-x sm" data-act="mapBack" aria-label="Close">×</button></div>
+    <div class="mv-months">${ms.map(k=>`<button class="mv-m${k===mapState.period?' on':''}" data-act="mapMonth" data-v="${k}"><i style="height:${Math.max(3,(byM[k]||0)/mx*40)}px;background:${byM[k]?p.color:'rgba(255,255,255,.15)'}"></i><span>${monS(+k.slice(5)-1)}</span></button>`).join('')}</div>
+    <div class="mvd-list">${p.tx.slice(0,6).map(t=>`<button class="mvd-row" data-act="edit" data-v="${esc(t.id)}"><span>${cat(t.catId).icon||'•'}</span><span class="mvd-n"><b>${esc(t.note||t.item||cat(t.catId).name)}</b><small>${fmtD(t.date,{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</small></span><b>${money(myShare(t))}</b></button>`).join('')}</div>
+    ${p.tx.length>6?`<p class="mvd-more">+${p.tx.length-6} more</p>`:''}`;
+  trTree(el);
 }
 function stopPlay(){ mapState.playing=false; clearInterval(mapState.timer); const b=$('.mv-play'); if(b) b.textContent='▶'; }
 function togglePlay(){ if(mapState.playing) return stopPlay(); const ms=mapState.months; if(!ms.length) return;
-  mapState.playing=true; $('.mv-play').textContent='❚❚'; let i=mapState.period==='all'||ms.indexOf(mapState.period)>=ms.length-1?0:ms.indexOf(mapState.period)+1;
-  const step=()=>{ mapState.period=ms[i]; mapState.sel=null; updateMap(true); i++; if(i>=ms.length){ clearInterval(mapState.timer); setTimeout(()=>{ if(mapState.playing){ stopPlay(); mapState.period='all'; updateMap(true); } },1600); } };
-  step(); mapState.timer=setInterval(step,1500); }
-// small turning globe on Home
+  mapState.playing=true; $('.mv-play').textContent='❚❚'; mapState.sel=null; let i=mapState.period==='all'||ms.indexOf(mapState.period)>=ms.length-1?0:ms.indexOf(mapState.period)+1;
+  const step=()=>{ mapState.period=ms[i]; updateMap(); i++; if(i>=ms.length){ clearInterval(mapState.timer); setTimeout(()=>{ if(mapState.playing){ stopPlay(); mapState.period='all'; updateMap(); } },1800); } };
+  step(); mapState.timer=setInterval(step,1700); }
+// Home card: a turning night Earth (pure CSS) with the places you spent in
 function mapCardHTML(){
   if(!allTx().some(t=>t.type==='expense')) return '';
-  const pl=mapPlaces('all'); const far=pl.filter(p=>p.key!==homeCity().name).length;
-  return `<h3 class="stitle">Your spending world</h3><button class="panel mapcard" data-act="openMap"><canvas id="miniGlobe" aria-hidden="true"></canvas>
-    <span class="mc-t"><b>${pl.length} place${pl.length===1?'':'s'}</b><small>${far?`${far} outside ${esc(geoName(homeCity().name))}`:'Tap to explore'}</small><span class="mc-go">Open map ›</span></span></button>`;
+  const pl=mapPlaces('all'); const far=pl.filter(p=>p.key!==homeCity().name);
+  return `<h3 class="stitle">Your spending world</h3><button class="panel mapcard" data-act="openMap">
+    <span class="cssglobe" aria-hidden="true"><span class="cg-shade"></span></span>
+    <span class="mc-t"><b>${pl.length} place${pl.length===1?'':'s'}</b><small>${far.length?`${far.length} outside ${esc(geoName(homeCity().name))}`:'Tap to explore'}</small>
+      <span class="mc-chips">${pl.slice(0,3).map(p=>`<span style="--c:${p.color}" data-notr>${esc(geoName(p.name))}</span>`).join('')}</span><span class="mc-go">Open map ›</span></span></button>`;
 }
-function mountMiniGlobe(){
-  if(miniGlobe){ miniGlobe.stop(); miniGlobe=null; } const c=document.getElementById('miniGlobe'); if(!c||!window.MasroofGlobe) return;
-  miniGlobe=window.MasroofGlobe(c,{lat:homeCity().lat-16,lng:homeCity().lng,zoom:1.15,dark:()=>true});
-  miniGlobe.setSpots(mapPlaces('all').map(p=>({id:p.key,lat:p.lat,lng:p.lng,value:p.total,color:p.color})),true);
-  c.style.pointerEvents='none';
-  if(window.IntersectionObserver){ const io=new IntersectionObserver(es=>{ for(const e of es){ if(!miniGlobe) return; if(e.isIntersecting) miniGlobe.start(); else miniGlobe.stop(); } }); io.observe(c); }
-}
+function mountMiniGlobe(){}
 // remember where an expense was added (only when the user turned it on)
 function pinLocation(id){
   if(!P().geo||!navigator.geolocation) return;
@@ -1675,7 +1686,7 @@ function pinLocation(id){
 }
 function turnOnGeo(){
   if(!navigator.geolocation) return toast('Location isn’t available on this device');
-  navigator.geolocation.getCurrentPosition(()=>{ P().geo=true; persist('profile'); toast('New expenses will be pinned where you are'); renderMapSheet(); if(state.ui.tab==='settings') render(false); },
+  navigator.geolocation.getCurrentPosition(()=>{ P().geo=true; persist('profile'); toast('New expenses will be pinned where you are'); renderMapCards(); if(state.ui.tab==='settings') render(false); },
     ()=>toast('Location is off for Masroof — allow it in iPhone Settings › Privacy › Location Services',{bad:true}),{timeout:10000});
 }
 /* ================= PDF monthly report =================
@@ -2522,9 +2533,10 @@ document.addEventListener('click',async e=>{
     case 'openMap': if($('#dlg').open) $('#dlg').close(); openMap(); break;
     case 'mapClose': closeMap(); break;
     case 'mapPlay': togglePlay(); break;
-    case 'mapPick': mapState.sel=v; if(globe) globe.select(v); renderMapSheet(); buzz(6); break;
-    case 'mapBack': mapState.sel=null; if(globe) globe.select(null); renderMapSheet(); break;
-    case 'mapMonth': stopPlay(); { const keep=mapState.sel; mapState.period=v; updateMap(true); mapState.sel=keep; renderMapSheet(); if(globe&&keep) globe.select(keep); } break;
+    case 'mapPick': mapState.sel=v; if(globe) globe.select(v); renderMapCards(); renderMapDetail(); buzz(6); break;
+    case 'mapBack': mapState.sel=null; if(globe){ if(globe.overview) globe.overview(); else globe.select(null); } renderMapCards(); renderMapDetail(); break;
+    case 'mapStyle': mapState.style=v; p.mapStyle=v; persist('profile'); if(globe&&globe.setStyle) globe.setStyle(v); document.querySelectorAll('.mv-style button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v)); break;
+    case 'mapMonth': stopPlay(); mapState.period=v; updateMap(); break;
     case 'geoOn': turnOnGeo(); break;
     case 'geoToggle': if(p.geo){ p.geo=false; persist('profile'); toast('Masroof won’t use your location'); render(false); } else turnOnGeo(); break;
     case 'checkUpdate': checkUpdate(true); break;

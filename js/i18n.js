@@ -305,10 +305,11 @@ const d = {
 'A new version of Masroof is ready':'إصدار جديد من مصروف جاهز','Update':'تحديث','You have the latest version':'لديك أحدث إصدار','You’re offline':'أنت غير متصل','Couldn’t check — try again when online':'تعذّر التحقق — حاول عند الاتصال',
 'Face ID unlock needs an iPhone with Face ID or Touch ID and iOS {#} or later':'الفتح بـ Face ID يتطلب آيفون فيه Face ID أو Touch ID ونظام iOS {#} أو أحدث',
 'Busiest':'الأكثر صرفًا','Busiest:':'الأكثر صرفًا:',
+'A real 3D Earth with city lights: glowing bars where you spent, arcs from home, and a month-by-month replay. Night or day view.':'أرض ثلاثية الأبعاد حقيقية بأضواء المدن: أعمدة مضيئة حيث صرفت، وأقواس من مدينتك، وإعادة عرض شهرًا بشهر. عرض ليلي أو نهاري.','Pin where you spend':'ثبّت أماكن صرفك','Turn on location for new expenses':'شغّل الموقع للمصاريف الجديدة','Map style':'نمط الخريطة','Night':'ليل','Day':'نهار',
 };
 // phrases around names or other free text: $1… are translated too when they're in the list above
 const patterns = [
-  [/^(.+) pays you back ([−\d].*)$/, '$1 سيسدّد لك $2'], [/^Pay back (.+?) ([−\d].*)$/, 'سدّد لـ $1 $2'],
+  [/^(\d+) outside (.+)$/, '$1 خارج $2'], [/^(.+) pays you back ([−\d].*)$/, '$1 سيسدّد لك $2'], [/^Pay back (.+?) ([−\d].*)$/, 'سدّد لـ $1 $2'],
   [/^(.+) pays you back$/, '$1 سيسدّد لك'], [/^Pay back (.+)$/, 'سدّد لـ $1'], [/^(.+) owes you$/, '$1 مدين لك'], [/^You owe (.+)$/, 'أنت مدين لـ $1'],
   [/^Lent to (.+)$/, 'أقرضت $1'], [/^Borrowed from (.+)$/, 'اقترضت من $1'], [/^Paid back (.+)$/, 'سددت لـ $1'], [/^Paid you back:? (.+)$/, 'سدّد لك: $1'],
   [/^Invested in (.+)$/, 'استثمار في $1'], [/^Sold (.+)$/, 'بيع $1'], [/^Transfer to (.+)$/, 'تحويل إلى $1'], [/^Invest in (.+)$/, 'استثمار في $1'],
