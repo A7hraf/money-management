@@ -32,6 +32,7 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 - **Credit cards:** add the limit, statement day and due day. Each card then shows its statement balance, what's left to pay, the due date, the minimum payment and your available credit, with a **Pay** button. Card payments that are due also appear in "Coming up".
 - **Reminders in Calendar:** Masroof can't send notifications itself, so it exports your bills, card and loan due dates, plus an optional daily "import bank SMS" reminder, to your iPhone Calendar. Calendar then alerts you even when Masroof is closed.
 - **Monthly PDF report** from Activity's export button: a summary, categories against budgets, a day-by-day chart, top places, account balances and every transaction. It's made on the phone, even offline.
+- **Any currency, converted:** Masroof recognises about 50 currencies by code, symbol or word, in English and Arabic (AED, Dhs, درهم, $, €, £, ₹, ₺, baht, ريال سعودي…). Each one comes from a bank SMS, from quick add ("coffee 15 aed", "$12 uber") or from the form, and is converted to your currency. Masroof keeps the original amount and remembers the country (from the currency, or from the country code at the end of a card SMS such as "CARREFOUR DUBAI AE"), so the transaction shows its flag and appears there on the map. If the bank's SMS gives the amount in your currency, that exact figure is used. Rates are built in: the Gulf currencies are pegged to the dollar, so their rates are exact, and the others are approximate. In Settings › Exchange rates you can download today's rates (once, or daily when online) or type your own rate for any currency. Downloading the rates fetches a public list and sends nothing about you.
 - **Spending map:** a full-screen 3D Earth (WebGL) with city lights at night or a satellite view by day, country borders, a glowing bar for every place you spent money (taller for more money, coloured by category) and arcs from your home city. Spin and zoom it, swipe through the place cards, press play to watch your spending month by month, and tap a place to see when you spent there. A place comes from your iPhone's location if you turn on *Remember where I spend*, from a city named in the note or bank SMS, or from a foreign currency. Anything else shows at your home city. No map service is used.
 - **Face ID unlock** (iOS 18 or later): your passcode still works, and backups never include the Face ID key.
 - **Arabic:** switch the language in Settings → General or on the lock screen. The whole app switches to Arabic with a right-to-left layout, and amounts keep Western digits.
@@ -46,6 +47,7 @@ manifest.json     Home Screen app settings
 css/app.css       design (light + dark)
 js/app.js         the app: storage, encryption, screens, receipt and SMS reading
 js/i18n.js        Arabic words for every screen
+js/fx.js          currencies: country, flag, words and symbols, built-in rates
 js/globe3d.js     the 3D spending map (WebGL, uses the bundled globe.gl)
 js/globe.js       a simpler canvas globe used when WebGL isn't available
 js/globe-countries.js  country borders (Natural Earth, public domain)
