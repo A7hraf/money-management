@@ -32,7 +32,7 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 - **Credit cards:** add the limit, statement day and due day. Each card then shows its statement balance, what's left to pay, the due date, the minimum payment and your available credit, with a **Pay** button. Card payments that are due also appear in "Coming up".
 - **Reminders in Calendar:** Masroof can't send notifications itself, so it exports your bills, card and loan due dates, plus an optional daily "import bank SMS" reminder, to your iPhone Calendar. Calendar then alerts you even when Masroof is closed.
 - **Monthly PDF report** from Activity's export button: a summary, categories against budgets, a day-by-day chart, top places, account balances and every transaction. It's made on the phone, even offline.
-- **Spending map:** a 3D globe with a glowing light for every place you spent money, sized by amount and coloured by category. Spin and zoom it, press play to watch your spending month by month, and tap a place to see when you spent there. A place comes from your iPhone's location if you turn on *Remember where I spend*, from a city named in the note or bank SMS, or from a foreign currency. Anything else shows at your home city. No map service is used.
+- **Spending map:** a full-screen 3D Earth (WebGL) with city lights at night or a satellite view by day, country borders, a glowing bar for every place you spent money (taller for more money, coloured by category) and arcs from your home city. Spin and zoom it, swipe through the place cards, press play to watch your spending month by month, and tap a place to see when you spent there. A place comes from your iPhone's location if you turn on *Remember where I spend*, from a city named in the note or bank SMS, or from a foreign currency. Anything else shows at your home city. No map service is used.
 - **Face ID unlock** (iOS 18 or later): your passcode still works, and backups never include the Face ID key.
 - **Arabic:** switch the language in Settings → General or on the lock screen. The whole app switches to Arabic with a right-to-left layout, and amounts keep Western digits.
 - **Settings:** a month that starts on your payday (e.g. 25th to 24th), budgets that can carry unspent money into next month, repeating payments, categories and items, and Home sections. Security settings are here too: auto-lock, change passcode, and encrypted backup/restore. You can also export a CSV.
@@ -46,7 +46,11 @@ manifest.json     Home Screen app settings
 css/app.css       design (light + dark)
 js/app.js         the app: storage, encryption, screens, receipt and SMS reading
 js/i18n.js        Arabic words for every screen
-js/globe.js       the 3D spending globe (canvas, no libraries)
+js/globe3d.js     the 3D spending map (WebGL, uses the bundled globe.gl)
+js/globe.js       a simpler canvas globe used when WebGL isn't available
+js/globe-countries.js  country borders (Natural Earth, public domain)
+js/vendor/        globe.gl (MIT licence, see LICENSE-globe.gl.txt)
+images/earth-*.jpg     Earth textures (NASA Blue Marble and Black Marble, public domain)
 js/globe-data.js  land dots for the globe (Natural Earth, public domain)
 version.json      the newest version, for the in-app update banner
 images/           logo and Home Screen icons
