@@ -929,3 +929,13 @@ body.map-open .tabbar{display:none}
 .mc-go{margin-top:10px;align-self:flex-start;padding:7px 14px;border-radius:99px;background:linear-gradient(135deg,#1FA2A0,#3CCB6E);font-weight:800;font-size:13.5px}
 .globe-btn{font-size:20px}
 [dir=rtl] .cssglobe{animation-direction:reverse}
+/* exchange rates */
+.linkbtn{border:0;background:none;padding:0;color:var(--brand);font:inherit;font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.fxhint{margin:4px 0 0}
+.fxsrc{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:color-mix(in srgb,var(--brand) 10%,transparent);margin-bottom:8px}
+.fxsrc>div{flex:1;min-width:0}
+.fxlist .fxr{gap:8px}
+.fxr>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fxf{font-size:18px}
+.fxv{display:flex;align-items:center;gap:6px;flex:none;font-size:13px;direction:ltr}
+.fxv .inp{width:104px;padding:6px 8px;text-align:end;direction:ltr}
