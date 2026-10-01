@@ -11,7 +11,7 @@ const newId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).sl
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 // the version shown in Settings › About; version.json on the site holds the newest one
-const APP_VERSION='3.1';
+const APP_VERSION='3.2';
 // language: English or Arabic (the Arabic words live in js/i18n.js). Day/month names switch in place.
 let LANG='en';
 const MONTHS_EN=MONTHS.slice(), MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -35,7 +35,7 @@ const TYPE_LABEL={bank:'Bank account',card:'Credit card',cash:'Cash',wallet:'E�
 const INV_TYPES={stocks:'Stocks',funds:'Funds / ETFs',gold:'Gold',crypto:'Crypto',property:'Property',deposit:'Fixed deposit',business:'Business',other:'Other'};
 const INV_COLORS={stocks:'#3D7DD8',funds:'#2BA38A',gold:'#D9A514',crypto:'#8A5CD6',property:'#B36B2C',deposit:'#1FA5C9',business:'#D64F86',other:'#7D8B88'};
 const DEBT_KIND={lent:['give','Lent to'],repaid_out:['give','Paid back'],borrowed:['receive','Borrowed from'],repaid_in:['receive','Paid you back:']};
-const WIDGETS=[['recap','Monthly recap'],['today','Today\u2019s limit'],['quick','Quick add'],['subs','Subscriptions & fixed costs'],['trend','Spending chart'],['insights','What stands out'],['merchants','Where you spend'],['tags','Tags'],['paidFrom','Paid from (accounts)'],['people','Friends & debts'],['upcoming','Coming up'],['forecast','Month-end forecast']];
+const WIDGETS=[['recap','Monthly recap'],['today','Today\u2019s limit'],['quick','Quick add'],['subs','Subscriptions & fixed costs'],['trend','Spending chart'],['insights','What stands out'],['merchants','Where you spend'],['tags','Tags'],['paidFrom','Paid from (accounts)'],['people','Friends & debts'],['upcoming','Coming up'],['forecast','Month-end forecast'],['map','Spending map']];
 
 function defaultCategories(){return {
   expense:[
@@ -498,6 +498,7 @@ function render(full=true){
 }
 function runCountUps(){
   runOdometers();
+  if(state.ui.tab==='home') mountMiniGlobe(); else if(miniGlobe){ miniGlobe.stop(); miniGlobe=null; }
   document.querySelectorAll('[data-count]').forEach(el=>{
     const to=+el.dataset.count, from=+el.dataset.from||0; if(matchMedia('(prefers-reduced-motion: reduce)').matches||from===to){el.textContent=money(to);return;}
     const t0=performance.now(), dur=650;
@@ -547,6 +548,7 @@ function homeRestHTML(){
   h+=recentHTML();
   h+=budgetRingsHTML(s);
   if(W.forecast) h+=forecastHTML();
+  if(W.map!==false) h+=mapCardHTML();
   const spending=`<h3 class="stitle">Where it went</h3><section class="panel">${donutHTML(s)}<ul class="cats">${catListHTML(s,ps)}</ul></section>`;
   const tips=W.insights?insightsHTML(u,s,ps,a,b,true):[];
   const cards=[W.trend&&allTx().length?weekBarsHTML():'',W.recap&&allTx().length?recapCardHTML():'',...tips.map(([k,t],i)=>`<div class="tip-card t${i%6}"><span class="k">${k}</span><p>${t}</p></div>`),W.upcoming?upcomingHTML():'',W.subs?subsHTML():'',W.people?peopleWidgetHTML():'',W.merchants?merchantsHTML(s):'',W.tags?tagsHTML(s):'',W.paidFrom?acctSpendHTML(s):''].filter(Boolean);
@@ -690,7 +692,7 @@ const recLabel=r=>(r.count?`[${(r.done||0)+1}/${r.count}] `:'')+(r.note||r.item|
 /* ---------- Activity ---------- */
 function viewTxShell(){
   const u=state.ui; const [y,m]=u.txMonth.split('-').map(Number); const cats=[...P().categories.expense,...P().categories.income];
-  const acts=`${canImages?`<button class="round" data-act="scanNew" aria-label="Scan receipt">${ICON.camera}</button>`:''}<button class="round" data-act="import" aria-label="Import bank messages">${ICON.inbox}</button>${downloadsNs?`<button class="round" data-act="export" aria-label="Export CSV">${ICON.down}</button>`:''}`;
+  const acts=`<button class="round globe-btn" data-act="openMap" aria-label="Spending map">🌍</button>${canImages?`<button class="round" data-act="scanNew" aria-label="Scan receipt">${ICON.camera}</button>`:''}<button class="round" data-act="import" aria-label="Import bank messages">${ICON.inbox}</button>${downloadsNs?`<button class="round" data-act="export" aria-label="Export CSV">${ICON.down}</button>`:''}`;
   const months=[]; for(let i=11;i>=0;i--){const dd=new Date(new Date().getFullYear(),new Date().getMonth()-i,1); months.push(`${dd.getFullYear()}-${pad(dd.getMonth()+1)}`);}
   if(!months.includes(u.txMonth)) months.unshift(u.txMonth);
   return pageHead('Activity','',acts)+`<div class="hscroll months" id="monthRow">${months.map(k=>{const [yy,mm]=k.split('-').map(Number);return `<button class="chip" data-act="pickMonth" data-v="${k}" aria-pressed="${u.txMonth===k}">${monS(mm-1)}${yy!==new Date().getFullYear()?' '+yy:''}</button>`}).join('')}</div>
@@ -807,12 +809,14 @@ function quickSettingsHTML(){
     ${tile('🔔','Reminders','Add to Calendar','reminders')}
     ${tile('📄','Monthly report','PDF or CSV','export')}
     ${tile('💳','Accounts',`${P().accounts.length} accounts`,'acctBulk')}
+    ${tile('🌍','Spending map',`${mapPlaces('all').length} places`,'openMap')}
     ${tile('🌐','Language',`<span data-notr>${LANG==='ar'?'English':'العربية'}</span>`,'lkLang')}
   </div>`;
 }
 function openWhatsNew(){
   const row=(ic,t,d,act,btn)=>`<div class="wn"><span class="wn-i">${ic}</span><div><b>${t}</b><p>${d}</p>${act?`<button class="btn small primary" data-act="${act}">${btn}</button>`:''}</div></div>`;
   dlg('What’s new in Masroof',`<p class="hint" style="margin-top:0">Version <span data-notr>${APP_VERSION}</span>. Everything is also in Settings.</p>
+    ${row('🌍','Your spending world','A 3D globe of where you spent and when — play it month by month.','openMap','Open the map')}
     ${row(FACE_ICON,'Face ID unlock','Open Masroof with your face. Your passcode still works.',bioCapable&&!hasBio?'bioToggle':'',bioCapable&&!hasBio?'Turn on Face ID':'')}
     ${row('✉️','Bank SMS, automatically','Your iPhone saves each bank SMS; Masroof adds them in one tap, on the right account.','smsGuide','Set up bank SMS')}
     ${row('🔔','Reminders in Calendar','Bills, credit card and loan due dates as alerts, even when Masroof is closed.','reminders','Add reminders')}
@@ -957,6 +961,7 @@ function viewSettings(){
       <div class="rw"><span>Lock automatically</span><select class="sel" data-sec="autoLock">${[['0','When I leave the app'],['1','After 1 minute'],['5','After 5 minutes'],['15','After 15 minutes']].map(([v,l])=>`<option value="${v}"${String(secMeta.autoLock)===v?' selected':''}>${l}</option>`).join('')}</select></div>
       <div class="rw"><span>Too many wrong passcodes</span><select class="sel" data-sec="wipeAfter">${[['0','Slow down retries'],['10','Erase all data after 10']].map(([v,l])=>`<option value="${v}"${String(secMeta.wipeAfter)===v?' selected':''}>${l}</option>`).join('')}</select></div>
     </div>
+    <label class="toggle-row"><span>Remember where I spend<br><span class="muted" style="font-size:13px">Pins new expenses on your spending map using your iPhone’s location. Kept encrypted on this phone.</span></span><input type="checkbox" class="tick" data-act="geoToggle"${P().geo?' checked':''}></label>
     ${bioCapable||hasBio?`<label class="toggle-row"><span>Unlock with Face ID<br><span class="muted" style="font-size:13px">Your passcode still works too. Needs iOS 18 or later.</span></span><input type="checkbox" class="tick" data-act="bioToggle"${hasBio?' checked':''}></label>`:''}
     <div class="bar" style="margin:12px 0 0"><button class="btn" data-act="changePass">Change passcode</button><button class="btn" data-act="lockNow">Lock now</button></div></div></details>
   ${accOpen("Backups","Backups")}<div class="acc-b">
@@ -1350,7 +1355,7 @@ async function saveDraft(){
   if(d._blobUrl) URL.revokeObjectURL(d._blobUrl);
   $('#dlg').close();
   celebrate(); toast(d.id?'Changes saved':(tx.refund?'Refund saved':({expense:'Expense saved',income:'Income saved',transfer:'Transfer saved',debt:'Saved',invest:'Investment saved'})[d.type]),{undo:lastUndo});
-  render(); checkAlerts(pre,tx);
+  render(); checkAlerts(pre,tx); if(!d.id&&tx.type==='expense'&&tx.date===todayStr()) pinLocation(tx.id);
 }
 
 /* ================= small dialogs ================= */
@@ -1554,6 +1559,125 @@ function addImported(rows,close,reviewed){
   touched.forEach(persistMonth); persist('profile'); if(close) $('#dlg').close(); if(ids.length) celebrate();
   toast(ids.length?`Imported ${ids.length} transaction${ids.length>1?'s':''} from your bank`:'Nothing to import',{undo:ids.length?()=>{removeIds(ids);render();}:null}); render();
 }
+/* ================= spending map =================
+   Where each expense happened: the exact spot when "Remember where I spend" is on (stored
+   encrypted like everything else), else a city named in the note or bank SMS, else the country
+   of a foreign currency, else your home city. Shown on a 3D globe with a month-by-month timeline. */
+const GEO=[ // name, lat, lng, words that point to it (English and Arabic)
+  ['Muscat',23.588,58.383,'muscat|مسقط|ruwi|روي|muttrah|mutrah|مطرح|qurum|القرم|khuwair|الخوير|ghubrah|الغبرة|bawshar|bausher|بوشر|azaiba|العذيبة|al mouj|الموج|mall of oman|avenues mall|madinat sultan qaboos|مدينة السلطان قابوس|wattayah|الوطية'],
+  ['Seeb',23.670,58.189,'seeb|السيب|mabelah|maabilah|المعبيلة|khoudh|al khoud|الخوض|muscat airport|مطار مسقط'],['Al Amerat',23.523,58.497,'amerat|العامرات'],
+  ['Barka',23.679,57.886,'barka|بركاء'],['Al Suwaiq',23.849,57.438,'suwaiq|السويق'],['Sohar',24.347,56.709,'sohar|صحار'],['Saham',24.172,56.888,'saham|صحم'],['Shinas',24.743,56.465,'shinas|شناص'],
+  ['Salalah',17.019,54.089,'salalah|صلالة|dhofar|ظفار'],['Nizwa',22.933,57.531,'nizwa|نزوى'],['Bahla',22.968,57.298,'bahla|بهلاء'],['Jabal Akhdar',23.073,57.661,'jabal akhdar|jebel akhdar|الجبل الأخضر'],
+  ['Sur',22.567,59.529,'sur|صور'],['Ibra',22.691,58.533,'ibra|إبراء|ابراء'],['Ibri',23.226,56.516,'ibri|عبري'],['Rustaq',23.391,57.424,'rustaq|الرستاق'],['Samail',23.302,57.977,'samail|سمائل'],
+  ['Buraimi',24.250,55.793,'buraimi|البريمي'],['Duqm',19.662,57.704,'duqm|الدقم'],['Khasab',26.180,56.247,'khasab|خصب|musandam|مسندم'],
+  ['Dubai',25.204,55.271,'dubai|دبي'],['Abu Dhabi',24.453,54.377,'abu dhabi|أبوظبي|ابوظبي'],['Sharjah',25.346,55.421,'sharjah|الشارقة'],['Al Ain',24.207,55.745,'al ain|العين'],
+  ['Ras Al Khaimah',25.790,55.943,'ras al khaimah|رأس الخيمة'],['Fujairah',25.129,56.326,'fujairah|الفجيرة'],['Riyadh',24.713,46.675,'riyadh|الرياض'],['Jeddah',21.485,39.192,'jeddah|جدة'],
+  ['Makkah',21.422,39.826,'makkah|mecca|مكة'],['Madinah',24.468,39.614,'madinah|medina|المدينة المنورة'],['Dammam',26.433,50.104,'dammam|الدمام'],['Doha',25.285,51.531,'doha|qatar|الدوحة|قطر'],
+  ['Kuwait',29.376,47.977,'kuwait|الكويت'],['Manama',26.228,50.586,'manama|bahrain|المنامة|البحرين'],['Cairo',30.044,31.236,'cairo|القاهرة'],['Amman',31.954,35.910,'amman|عمّان|عمان الأردن'],
+  ['Beirut',33.894,35.502,'beirut|بيروت'],['Istanbul',41.008,28.978,'istanbul|إسطنبول|اسطنبول'],['Trabzon',41.003,39.717,'trabzon|طرابزون'],['Baku',40.409,49.867,'baku|باكو'],
+  ['Tbilisi',41.716,44.783,'tbilisi|تبليسي'],['London',51.507,-0.128,'london|لندن'],['Paris',48.857,2.352,'paris|باريس'],['Geneva',46.204,6.143,'geneva|جنيف'],['Zurich',47.377,8.541,'zurich|زيورخ'],
+  ['Munich',48.135,11.582,'munich|ميونخ'],['Vienna',48.208,16.373,'vienna|فيينا'],['Rome',41.903,12.496,'rome|روما'],['Milan',45.464,9.190,'milan|ميلانو'],['Barcelona',41.385,2.173,'barcelona|برشلونة'],
+  ['Madrid',40.417,-3.704,'madrid|مدريد'],['Mumbai',19.076,72.878,'mumbai|bombay|مومباي'],['Delhi',28.614,77.209,'delhi|دلهي'],['Kochi',9.931,76.267,'kochi|cochin|kerala|كيرالا'],
+  ['Karachi',24.861,67.010,'karachi|كراتشي'],['Lahore',31.550,74.344,'lahore|لاهور'],['Colombo',6.927,79.861,'colombo|كولومبو'],['Male',4.175,73.509,'maldives|male city|المالديف'],
+  ['Kathmandu',27.717,85.324,'kathmandu|كاتماندو'],['Dhaka',23.811,90.413,'dhaka|دكا'],['Bangkok',13.756,100.502,'bangkok|بانكوك'],['Phuket',7.880,98.392,'phuket|بوكيت'],
+  ['Kuala Lumpur',3.139,101.687,'kuala lumpur|كوالالمبور'],['Singapore',1.352,103.820,'singapore|سنغافورة'],['Bali',-8.650,115.217,'bali|بالي'],['Jakarta',-6.208,106.846,'jakarta|جاكرتا'],
+  ['Manila',14.600,120.984,'manila|مانيلا'],['Tokyo',35.676,139.650,'tokyo|طوكيو'],['Seoul',37.567,126.978,'seoul|سيول'],['Sydney',-33.869,151.209,'sydney|سيدني'],
+  ['Nairobi',-1.286,36.817,'nairobi|نيروبي'],['Zanzibar',-6.165,39.202,'zanzibar|زنجبار'],['New York',40.713,-74.006,'new york|نيويورك'],['Los Angeles',34.052,-118.244,'los angeles|لوس أنجلوس'],
+].map(([name,lat,lng,w])=>({name,lat,lng,words:w.split('|')}));
+const GEO_AR={'Muscat':'مسقط','Seeb':'السيب','Al Amerat':'العامرات','Barka':'بركاء','Al Suwaiq':'السويق','Sohar':'صحار','Saham':'صحم','Shinas':'شناص','Salalah':'صلالة','Nizwa':'نزوى','Bahla':'بهلاء','Jabal Akhdar':'الجبل الأخضر','Sur':'صور','Ibra':'إبراء','Ibri':'عبري','Rustaq':'الرستاق','Samail':'سمائل','Buraimi':'البريمي','Duqm':'الدقم','Khasab':'خصب',
+  'Dubai':'دبي','Abu Dhabi':'أبوظبي','Sharjah':'الشارقة','Al Ain':'العين','Ras Al Khaimah':'رأس الخيمة','Fujairah':'الفجيرة','Riyadh':'الرياض','Jeddah':'جدة','Makkah':'مكة المكرمة','Madinah':'المدينة المنورة','Dammam':'الدمام','Doha':'الدوحة','Kuwait':'الكويت','Manama':'المنامة','Cairo':'القاهرة','Amman':'عمّان','Beirut':'بيروت','Istanbul':'إسطنبول','Trabzon':'طرابزون','Baku':'باكو','Tbilisi':'تبليسي',
+  'London':'لندن','Paris':'باريس','Geneva':'جنيف','Zurich':'زيورخ','Munich':'ميونخ','Vienna':'فيينا','Rome':'روما','Milan':'ميلانو','Barcelona':'برشلونة','Madrid':'مدريد','Mumbai':'مومباي','Delhi':'دلهي','Kochi':'كوتشي','Karachi':'كراتشي','Lahore':'لاهور','Colombo':'كولومبو','Male':'ماليه','Kathmandu':'كاتماندو','Dhaka':'دكا','Bangkok':'بانكوك','Phuket':'بوكيت',
+  'Kuala Lumpur':'كوالالمبور','Singapore':'سنغافورة','Bali':'بالي','Jakarta':'جاكرتا','Manila':'مانيلا','Tokyo':'طوكيو','Seoul':'سيول','Sydney':'سيدني','Nairobi':'نيروبي','Zanzibar':'زنجبار','New York':'نيويورك','Los Angeles':'لوس أنجلوس'};
+const geoName=n=>LANG==='ar'&&GEO_AR[n]?GEO_AR[n]:n;
+const CUR_CITY={OMR:'Muscat',AED:'Dubai',SAR:'Riyadh',QAR:'Doha',KWD:'Kuwait',BHD:'Manama',EGP:'Cairo',JOD:'Amman',TRY:'Istanbul',GBP:'London',EUR:'Paris',USD:'New York',INR:'Mumbai',PKR:'Karachi',LKR:'Colombo',THB:'Bangkok',MYR:'Kuala Lumpur',SGD:'Singapore',JPY:'Tokyo',IDR:'Jakarta',PHP:'Manila',BDT:'Dhaka',NPR:'Kathmandu',KRW:'Seoul',AUD:'Sydney',KES:'Nairobi',AZN:'Baku',GEL:'Tbilisi'};
+const geoCity=n=>GEO.find(g=>g.name===n);
+const GEO_WORDS=GEO.flatMap(g=>g.words.map(w=>({w,g}))).sort((a,b)=>b.w.length-a.w.length).map(x=>({...x,re:/[a-z]/.test(x.w)?new RegExp('(^|[^a-z])'+x.w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^a-z]|$)'):null}));
+function cityInText(s){ const n=norm(s); if(!n) return null; for(const x of GEO_WORDS){ if(x.re?x.re.test(n):n.includes(x.w)) return x.g; } return null; }
+function nearestCity(lat,lng){ let best=null,bd=1e9; for(const g of GEO){ const d=Math.hypot(g.lat-lat,(g.lng-lng)*Math.cos(lat*Math.PI/180)); if(d<bd){bd=d;best=g;} } return {g:best,km:bd*111}; }
+const homeCity=()=>geoCity(P().homeCity)||geoCity(CUR_CITY[cur()])||geoCity('Muscat');
+function placeOf(t){
+  if(t.loc){ const n=nearestCity(t.loc.lat,t.loc.lng); if(n.g&&n.km<45) return {key:n.g.name,name:n.g.name,lat:n.g.lat,lng:n.g.lng,how:'gps'};
+    const la=Math.round(t.loc.lat*2)/2, lo=Math.round(t.loc.lng*2)/2; return {key:la+','+lo,name:n.g?`Near ${n.g.name}`:`${la}, ${lo}`,lat:la,lng:lo,how:'gps'}; }
+  const c=cityInText([t.note,t.item,t.sms].filter(Boolean).join(' ')); if(c) return {key:c.name,name:c.name,lat:c.lat,lng:c.lng,how:'text'};
+  if(t.fx&&CUR_CITY[t.fx.cur]){ const g=geoCity(CUR_CITY[t.fx.cur]); return {key:g.name,name:g.name,lat:g.lat,lng:g.lng,how:'currency'}; }
+  const h=homeCity(); return {key:h.name,name:h.name,lat:h.lat,lng:h.lng,how:'home'};
+}
+// spending per place for a period ('all' or 'YYYY-MM')
+function mapPlaces(period){
+  const list=period==='all'?allTx():(state.months[period]||[]); const by={};
+  for(const t of list){ if(t.type!=='expense') continue; const v=myShare(t); if(!(v>0)) continue;
+    const pl=placeOf(t); const o=by[pl.key]||(by[pl.key]={...pl,total:0,count:0,cats:{},tx:[],how:{}}); o.total+=v; o.count++; o.cats[t.catId]=(o.cats[t.catId]||0)+v; o.tx.push(t); o.how[pl.how]=(o.how[pl.how]||0)+1; }
+  return Object.values(by).map(o=>{ const top=Object.entries(o.cats).sort((a,b)=>b[1]-a[1])[0]; o.color=top?cat(top[0]).color:'#1FA2A0'; o.topCat=top&&top[0]; o.tx.sort((a,b)=>a.date<b.date?1:-1); return o; }).sort((a,b)=>b.total-a.total);
+}
+const mapMonths=()=>{ const ks=Object.keys(state.months).filter(k=>(state.months[k]||[]).some(t=>t.type==='expense')).sort(); return ks; };
+let globe=null, miniGlobe=null, mapState={period:'all',sel:null,playing:false,timer:null};
+function openMap(){
+  closeMap(); const months=mapMonths(); mapState.period='all'; mapState.sel=null;
+  const v=document.createElement('div'); v.id='mapv'; v.className='mapv'; document.body.appendChild(v); document.body.classList.add('map-open');
+  v.innerHTML=`<div class="mv-top"><button class="mv-x" data-act="mapClose" aria-label="Close">×</button><div class="mv-h"><h2>Where your money went</h2><small id="mvSub"></small></div></div>
+    <div class="mv-globe"><canvas id="globeC" aria-label="Spending globe"></canvas><div class="mv-hint">Drag to spin · pinch to zoom · tap a light</div></div>
+    <div class="mv-time"><button class="mv-play" data-act="mapPlay" aria-label="Play months">▶</button><input type="range" id="mvRange" min="0" max="${months.length}" value="${mapState.period==='all'?months.length:months.indexOf(mapState.period)}" aria-label="Month"><span id="mvWhen"></span></div>
+    <div class="mv-sheet" id="mvSheet"></div>`;
+  globe=window.MasroofGlobe(document.getElementById('globeC'),{lat:homeCity().lat-22,lng:homeCity().lng,dark:()=>true,onPick:s=>{ mapState.sel=s.id; renderMapSheet(); buzz(8); }});
+  v.querySelector('#mvRange').addEventListener('input',e=>{ stopPlay(); const i=+e.target.value; mapState.period=i>=months.length?'all':months[i]; mapState.sel=null; updateMap(true); });
+  mapState.months=months; updateMap(true); trTree(v);
+  requestAnimationFrame(()=>v.classList.add('in'));
+}
+function closeMap(){ stopPlay(); if(globe){ globe.stop(); globe=null; } const v=$('#mapv'); if(v) v.remove(); document.body.classList.remove('map-open'); }
+function updateMap(animate){
+  const places=mapPlaces(mapState.period); mapState.places=places;
+  if(globe) globe.setSpots(places.map(p=>({id:p.key,lat:p.lat,lng:p.lng,value:p.total,color:p.color,label:geoName(p.name)})),animate);
+  const total=sum(places,p=>p.total);
+  const w=$('#mvWhen'); if(w) w.innerHTML=`<b>${esc(mapState.period==='all'?tr('All time'):MONTHS[+mapState.period.slice(5)-1]+' '+mapState.period.slice(0,4))}</b><span>${money(total)} ${esc(cur())}</span>`;
+  const sub=$('#mvSub'); if(sub) sub.textContent=`${places.length} place${places.length===1?'':'s'} · ${money(total)} ${cur()}`;
+  const r=$('#mvRange'); if(r) r.value=mapState.period==='all'?mapState.months.length:mapState.months.indexOf(mapState.period);
+  renderMapSheet();
+}
+function renderMapSheet(){
+  const el=$('#mvSheet'); if(!el) return; el.scrollTop=0; const places=mapState.places||[]; const p=places.find(x=>x.key===mapState.sel);
+  const geoOff=!P().geo;
+  if(p){ // one place: when you spent there
+    const all=mapPlaces('all').find(x=>x.key===p.key)||p; const byM={}; for(const t of all.tx){ const k=t.date.slice(0,7); byM[k]=(byM[k]||0)+myShare(t); }
+    const ms=mapState.months.slice(-12); const mx=Math.max(1e-9,...ms.map(k=>byM[k]||0));
+    el.innerHTML=`<div class="mv-pl-h"><span class="mv-dot" style="background:${p.color}"></span><div><b data-notr>${esc(geoName(p.name))}</b><small>${p.count} purchase${p.count===1?'':'s'} · ${cat(p.topCat).icon||''} ${esc(cat(p.topCat).name)}</small></div><b class="mv-amt">${money(p.total)}</b><button class="icon-btn" data-act="mapBack" aria-label="Back">×</button></div>
+      <div class="mv-months">${ms.map(k=>`<button class="mv-m${k===mapState.period?' on':''}" data-act="mapMonth" data-v="${k}"><i style="height:${Math.max(3,(byM[k]||0)/mx*44)}px;background:${byM[k]?p.color:'var(--line)'}"></i><span>${monS(+k.slice(5)-1)}</span></button>`).join('')}</div>
+      <div class="tx-group">${p.tx.slice(0,8).map(txRow).join('')}</div>${p.tx.length>8?`<p class="hint" style="text-align:center">+${p.tx.length-8} more</p>`:''}
+      ${p.how&&p.how.home&&!p.how.gps?`<p class="hint">Some of these have no location, so they’re shown at your home city.</p>`:''}`;
+    return; }
+  el.innerHTML=`${geoOff?`<div class="mv-geo"><span>📍</span><span><b>Pin new expenses where you are</b><small>Uses your iPhone’s location when you add an expense — stays encrypted on this phone.</small></span><button class="btn small primary" data-act="geoOn">Turn on</button></div>`:''}
+    ${places.length?`<div class="mv-list">${places.map((x,i)=>`<button class="mv-row" data-act="mapPick" data-v="${esc(x.key)}"><span class="mv-rank">${i+1}</span><span class="mv-dot" style="background:${x.color}"></span><span class="mv-nm"><b data-notr>${esc(geoName(x.name))}</b><small>${x.count} purchase${x.count===1?'':'s'} · last ${shortD(x.tx[0].date)}</small></span><b class="mv-amt">${money(x.total)}</b></button>`).join('')}</div>`
+      :`<div class="empty"><span class="big-emoji">🌍</span>No spending in this period.</div>`}`;
+}
+function stopPlay(){ mapState.playing=false; clearInterval(mapState.timer); const b=$('.mv-play'); if(b) b.textContent='▶'; }
+function togglePlay(){ if(mapState.playing) return stopPlay(); const ms=mapState.months; if(!ms.length) return;
+  mapState.playing=true; $('.mv-play').textContent='❚❚'; let i=mapState.period==='all'||ms.indexOf(mapState.period)>=ms.length-1?0:ms.indexOf(mapState.period)+1;
+  const step=()=>{ mapState.period=ms[i]; mapState.sel=null; updateMap(true); i++; if(i>=ms.length){ clearInterval(mapState.timer); setTimeout(()=>{ if(mapState.playing){ stopPlay(); mapState.period='all'; updateMap(true); } },1600); } };
+  step(); mapState.timer=setInterval(step,1500); }
+// small turning globe on Home
+function mapCardHTML(){
+  if(!allTx().some(t=>t.type==='expense')) return '';
+  const pl=mapPlaces('all'); const far=pl.filter(p=>p.key!==homeCity().name).length;
+  return `<h3 class="stitle">Your spending world</h3><button class="panel mapcard" data-act="openMap"><canvas id="miniGlobe" aria-hidden="true"></canvas>
+    <span class="mc-t"><b>${pl.length} place${pl.length===1?'':'s'}</b><small>${far?`${far} outside ${esc(geoName(homeCity().name))}`:'Tap to explore'}</small><span class="mc-go">Open map ›</span></span></button>`;
+}
+function mountMiniGlobe(){
+  if(miniGlobe){ miniGlobe.stop(); miniGlobe=null; } const c=document.getElementById('miniGlobe'); if(!c||!window.MasroofGlobe) return;
+  miniGlobe=window.MasroofGlobe(c,{lat:homeCity().lat-16,lng:homeCity().lng,zoom:1.15,dark:()=>true});
+  miniGlobe.setSpots(mapPlaces('all').map(p=>({id:p.key,lat:p.lat,lng:p.lng,value:p.total,color:p.color})),true);
+  c.style.pointerEvents='none';
+  if(window.IntersectionObserver){ const io=new IntersectionObserver(es=>{ for(const e of es){ if(!miniGlobe) return; if(e.isIntersecting) miniGlobe.start(); else miniGlobe.stop(); } }); io.observe(c); }
+}
+// remember where an expense was added (only when the user turned it on)
+function pinLocation(id){
+  if(!P().geo||!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos=>{ const t=allTx().find(x=>x.id===id); if(!t) return;
+    t.loc={lat:round(pos.coords.latitude,3),lng:round(pos.coords.longitude,3)}; persistMonth(t.date.slice(0,7)); },()=>{}, {enableHighAccuracy:false,timeout:8000,maximumAge:300000});
+}
+function turnOnGeo(){
+  if(!navigator.geolocation) return toast('Location isn’t available on this device');
+  navigator.geolocation.getCurrentPosition(()=>{ P().geo=true; persist('profile'); toast('New expenses will be pinned where you are'); renderMapSheet(); if(state.ui.tab==='settings') render(false); },
+    ()=>toast('Location is off for Masroof — allow it in iPhone Settings › Privacy › Location Services',{bad:true}),{timeout:10000});
+}
 /* ================= PDF monthly report =================
    Each A4 page is drawn on a canvas (so Arabic names and emoji render with the phone's own
    fonts), saved as a JPEG and wrapped in a small hand-built PDF. Works offline, no libraries. */
@@ -1698,6 +1822,14 @@ function loadDemo(){
     if(day===20) push({type:'transfer',amount:round(200+Math.random()*60,dp),date:ds,accountId:bank,toAccountId:card,note:'Credit card payment'});
     if(day===26) push({type:'invest',amount:100,date:ds,accountId:bank,investmentId:fund.id,dir:'buy',note:'Monthly investing'});
   }
+  // a few trips so the spending map has somewhere to go
+  const trip=(daysAgo,city,lat,lng,fxCur,rate,items)=>items.forEach(([note,catId,item,orig],i)=>{ const amount=round(orig*rate,dp);
+    push({type:'expense',amount,date:ymd(addDays(end,-daysAgo+Math.floor(i/2))),accountId:card,catId,item,note:`${note} · ${city}`,loc:{lat:round(lat+(Math.random()-.5)*.04,3),lng:round(lng+(Math.random()-.5)*.04,3)},...(fxCur?{fx:{cur:fxCur,orig,rate}}:{})}); });
+  trip(58,'Dubai',25.197,55.279,'AED',0.1048,[['Dubai Mall','shopping','Clothes',640],['Atlantis Aquaventure','fun','Outings',350],['Hotel','travel','Hotels',900],['Shake Shack','food','Burger',85]]);
+  trip(33,'Salalah',17.019,54.089,null,1,[['Hamdan Plaza Hotel','travel','Hotels',38],['Coconut stand','food','Juice & drinks',2.5],['Al Haffa Souq','shopping','Perfume',14],['Khareef camp','fun','Outings',12]]);
+  trip(15,'Nizwa',22.933,57.531,null,1,[['Nizwa Souq','shopping','Accessories',9.5],['Shuwa lunch','food','Rice & biryani',6]]);
+  trip(96,'Istanbul',41.008,28.978,'TRY',0.0112,[['Grand Bazaar','shopping','Accessories',4200],['Hotel','travel','Hotels',9800],['Bosphorus cruise','fun','Outings',1500],['Turkish breakfast','food','Restaurant',900]]);
+  trip(75,'Sohar',24.347,56.709,null,1,[['Lulu Sohar','groceries','',21],['Oman Oil Sohar','transport','Fuel',8]]);
   push({type:'debt',amount:50,date:ymd(addDays(end,-18)),accountId:cash,personId:khalid.id,debtKind:'lent',dir:'give',note:'Car repair',due:ymd(addDays(end,4))});
   push({type:'debt',amount:20,date:ymd(addDays(end,-6)),accountId:cash,personId:khalid.id,debtKind:'repaid_in',dir:'receive',note:'Part payment'});
   fund.history=[{date:ymd(addDays(end,-3)),value:round(sum(allTx().filter(t=>t.investmentId===fund.id),t=>t.amount)*1.04,dp)}];
@@ -1742,6 +1874,7 @@ function saveQuick(c){
   if(c.tags&&c.tags.length) tx.tags=c.tags;
   const k=tx.date.slice(0,7);(state.months[k]||(state.months[k]=[])).push(tx);persistMonth(k);
   if(tx.note){learn(tx.note,tx.catId,tx.item);persist('profile');}
+  if(tx.type==='expense') pinLocation(tx.id);
   lastUndo=()=>{removeIds([tx.id]);render();};
   celebrate(); toast(`${tx.note||tx.item} · ${money(tx.amount)} saved to ${cat(tx.catId).name}${tx.item?' › '+tx.item:''}`,{undo:lastUndo});
   render(false); checkAlerts(pre,tx);
@@ -2386,6 +2519,14 @@ document.addEventListener('click',async e=>{
     case 'lkUnlock': lkUnlock(); break;
     case 'lkBio': bioUnlock(); break;
     case 'whatsNew': openWhatsNew(); break;
+    case 'openMap': if($('#dlg').open) $('#dlg').close(); openMap(); break;
+    case 'mapClose': closeMap(); break;
+    case 'mapPlay': togglePlay(); break;
+    case 'mapPick': mapState.sel=v; if(globe) globe.select(v); renderMapSheet(); buzz(6); break;
+    case 'mapBack': mapState.sel=null; if(globe) globe.select(null); renderMapSheet(); break;
+    case 'mapMonth': stopPlay(); { const keep=mapState.sel; mapState.period=v; updateMap(true); mapState.sel=keep; renderMapSheet(); if(globe&&keep) globe.select(keep); } break;
+    case 'geoOn': turnOnGeo(); break;
+    case 'geoToggle': if(p.geo){ p.geo=false; persist('profile'); toast('Masroof won’t use your location'); render(false); } else turnOnGeo(); break;
     case 'checkUpdate': checkUpdate(true); break;
     case 'doUpdate': doUpdate(); break;
     case 'bioInfo': toast('Face ID unlock needs an iPhone with Face ID or Touch ID and iOS 18 or later'); break;
@@ -2644,6 +2785,7 @@ let persistGranted=null;
 const storageNote=()=>persistGranted===true?'Protected from automatic clean-up':persistGranted===false?'Add to Home Screen so iOS keeps it':'On this device only';
 async function lockNow(){
   if(!DEK) return; await saveNow();
+  closeMap(); if(miniGlobe){ miniGlobe.stop(); miniGlobe=null; }
   DEK=null; DEKraw=null; state.ready=false; state.profile=null; state.months={}; closeStory();
   draft=null; fd=null; imp={text:'',rows:[],busy:false,ctl:null,msg:''};
   for(const id of ['#dlg','#askDlg']){const d=$(id); if(d.open) d.close(); d.innerHTML='';}
