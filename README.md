@@ -3,7 +3,7 @@
 A private, encrypted money manager for iPhone. It installs on your Home Screen and works fully offline.
 
 - **Private by design.** Everything you record is encrypted on the phone with AES‑256‑GCM. The key comes from your passcode (PBKDF2‑SHA256, 600,000 rounds). Only encrypted data is stored, and nothing is ever sent to a server.
-- **Receipt scanning on the phone.** Photos are read by the bundled Tesseract engine in `ocr/` and are never uploaded.
+- **Bills read by Claude.** Photograph a bill in the Claude app with the request Masroof copies for you, then paste Claude's answer into the expense. Each item lands in its own category with its quantity and price, and VAT, service charge and discount are filled in. You can add a bill to any expense later, including one imported from a bank SMS.
 
 ## What it does
 
@@ -17,7 +17,7 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
   - list items with tax, service and discount
   - split with friends (equally, by amount or by item)
   - record refunds, foreign currency, repeating payments, installments and tags
-- **Scan a receipt** to fill in the items, tax and total.
+- **Paste a bill read by Claude** to fill in the items, categories, VAT and total.
 - **Bank SMS, automatically:** an iPhone Shortcuts automation saves every bank SMS to a file in the background, and Masroof imports it in one tap. See [Bank SMS](#bank-sms) below.
   - reads English and Arabic messages (including Arabic digits and ر.ع)
   - puts each message on the right account using the card or account's last 4 digits, or the bank's name
@@ -32,6 +32,9 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 - **Credit cards:** add the limit, statement day and due day. Each card then shows its statement balance, what's left to pay, the due date, the minimum payment and your available credit, with a **Pay** button. Card payments that are due also appear in "Coming up".
 - **Reminders in Calendar:** Masroof can't send notifications itself, so it exports your bills, card and loan due dates, plus an optional daily "import bank SMS" reminder, to your iPhone Calendar. Calendar then alerts you even when Masroof is closed.
 - **Monthly PDF report** from Activity's export button: a summary, categories against budgets, a day-by-day chart, top places, account balances and every transaction. It's made on the phone, even offline.
+- **Every activity in detail.** Tap one to see it in full. A bill shows the categories it splits into, every item with its quantity and cost, and the VAT, service charge, discount and total. Edit anything from there: changes keep the bank SMS, location and goal it belongs to.
+- **Accounts & cards** lists every account with its bank, last four digits and balance. Tap one to edit it, or add new ones (bank account, credit card with limit and statement and due days, savings, e-wallet, cash). Adding never changes or removes existing accounts.
+- **Savings goals** say what they are for, where the money is kept (an account's whole balance, only the deposits made for the goal, or cash by hand), and the plan: an amount each week, month or year from another account, the cash deposit machine or by hand. Masroof shows what's needed to reach the date and when the plan gets there, and can record each deposit automatically.
 - **Any currency, converted:** Masroof recognises about 50 currencies by code, symbol or word, in English and Arabic (AED, Dhs, درهم, $, €, £, ₹, ₺, baht, ريال سعودي…). Each one comes from a bank SMS, from quick add ("coffee 15 aed", "$12 uber") or from the form, and is converted to your currency. Masroof keeps the original amount and remembers the country (from the currency, or from the country code at the end of a card SMS such as "CARREFOUR DUBAI AE"), so the transaction shows its flag and appears there on the map. If the bank's SMS gives the amount in your currency, that exact figure is used. Rates are built in: the Gulf currencies are pegged to the dollar, so their rates are exact, and the others are approximate. In Settings › Exchange rates you can download today's rates (once, or daily when online) or type your own rate for any currency. Downloading the rates fetches a public list and sends nothing about you.
 - **Spending map:** a full-screen 3D Earth (WebGL) with city lights at night or a satellite view by day, country borders, a glowing bar for every place you spent money (taller for more money, coloured by category) and arcs from your home city. Spin and zoom it, swipe through the place cards, press play to watch your spending month by month, and tap a place to see when you spent there. A place comes from your iPhone's location if you turn on *Remember where I spend*, from a city named in the note or bank SMS, or from a foreign currency. Anything else shows at your home city. No map service is used.
 - **Face ID unlock** (iOS 18 or later): your passcode still works, and backups never include the Face ID key.
@@ -56,7 +59,6 @@ images/earth-*.jpg     Earth textures (NASA Blue Marble and Black Marble, public
 js/globe-data.js  land dots for the globe (Natural Earth, public domain)
 version.json      the newest version, for the in-app update banner
 images/           logo and Home Screen icons
-ocr/              on-device receipt reader (tesseract.js + English data, with licences)
 .nojekyll         tells GitHub Pages to serve files as-is
 ```
 
@@ -91,4 +93,4 @@ Every bank SMS is now added to *iCloud Drive › Shortcuts › Masroof › bank-
 
 ## Licences
 
-tesseract.js and tesseract.js-core are Apache-2.0 (see `ocr/LICENSE-*.txt`). The English language data comes from tesseract-ocr.
+

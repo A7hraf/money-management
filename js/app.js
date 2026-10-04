@@ -11,7 +11,7 @@ const newId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).sl
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 // the version shown in Settings › About; version.json on the site holds the newest one
-const APP_VERSION='3.4';
+const APP_VERSION='3.5';
 // language: English or Arabic (the Arabic words live in js/i18n.js). Day/month names switch in place.
 let LANG='en';
 const MONTHS_EN=MONTHS.slice(), MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -129,9 +129,7 @@ const state={profile:null,months:{},ready:false,
   ui:{tab:'home',period:'month',anchor:todayStr(),acct:'all',openCat:null,txMonth:todayStr().slice(0,7),txQ:'',txType:'all',txCat:'all'}};
 // Everything lives in an encrypted vault on this phone (see "encrypted local vault" below).
 // persist() just schedules one encrypted save of the whole state.
-const canImages=true;
 const downloadsNs={save:async({filename,data})=>{offerFile(filename,data,'text/csv','This CSV is NOT encrypted — anyone who opens the file can read it. Save it somewhere private.');return {status:'offered'};}};
-const assetsNs={upload:async blob=>({id:await putReceipt(blob)})};
 function persist(){ budCache.clear(); scheduleSave(); }
 const persistMonth=()=>{ budCache.clear(); scheduleSave(); };
 /* monthly budget for a category in the month containing `anchor`. With rollover on, what you
@@ -363,7 +361,7 @@ function advance(r,dateStr){
   const m=d.getMonth()+1,y=d.getFullYear();const last=new Date(y,m+1,0).getDate();
   return ymd(new Date(y,m,Math.min(r.day||d.getDate(),last)));
 }
-const REC_FIELDS=['type','amount','accountId','toAccountId','catId','item','note','investmentId','dir','tags','refund'];
+const REC_FIELDS=['type','amount','accountId','toAccountId','catId','item','note','investmentId','dir','tags','refund','goalId'];
 function runRecurring(){
   const t=todayStr();const touched=new Set();let added=0;
   for(const r of P().recurring){
@@ -545,7 +543,7 @@ const avatar=(id,size=38)=>`<span class="avatar" style="background:${avatarColor
 /* ---------- Home ---------- */
 function viewHome(){
   let h='';
-  if(!allTx().length) h+=magicHeroHTML()+`<section class="welcome"><img class="wlogo" src="${LOGO_MARK}" alt=""><h2>Welcome to Masroof</h2><p>Record your first expense with the <b>+</b> button, scan a receipt, or load demo data to look around. Everything stays encrypted on this phone.</p>
+  if(!allTx().length) h+=magicHeroHTML()+`<section class="welcome"><img class="wlogo" src="${LOGO_MARK}" alt=""><h2>Welcome to Masroof</h2><p>Record your first expense with the <b>+</b> button, paste a bill, or load demo data to look around. Everything stays encrypted on this phone.</p>
     <div class="bar"><button class="btn primary" data-act="acctBulk">Add my bank accounts</button><button class="btn" data-act="add">Add expense</button><button class="btn" data-act="demo">See a demo</button></div></section>`;
   else h+=magicHeroHTML();
   return h+`<div id="homeRest">${homeRestHTML()}</div>`;
@@ -723,7 +721,7 @@ const recLabel=r=>(r.count?`[${(r.done||0)+1}/${r.count}] `:'')+(r.note||r.item|
 /* ---------- Activity ---------- */
 function viewTxShell(){
   const u=state.ui; const [y,m]=u.txMonth.split('-').map(Number); const cats=[...P().categories.expense,...P().categories.income];
-  const acts=`<button class="round globe-btn" data-act="openMap" aria-label="Spending map">🌍</button>${canImages?`<button class="round" data-act="scanNew" aria-label="Scan receipt">${ICON.camera}</button>`:''}<button class="round" data-act="import" aria-label="Import bank messages">${ICON.inbox}</button>${downloadsNs?`<button class="round" data-act="export" aria-label="Export CSV">${ICON.down}</button>`:''}`;
+  const acts=`<button class="round globe-btn" data-act="openMap" aria-label="Spending map">🌍</button><button class="round" data-act="billNew" aria-label="Add a bill">🧾</button><button class="round" data-act="import" aria-label="Import bank messages">${ICON.inbox}</button>${downloadsNs?`<button class="round" data-act="export" aria-label="Export CSV">${ICON.down}</button>`:''}`;
   const months=[]; for(let i=11;i>=0;i--){const dd=new Date(new Date().getFullYear(),new Date().getMonth()-i,1); months.push(`${dd.getFullYear()}-${pad(dd.getMonth()+1)}`);}
   if(!months.includes(u.txMonth)) months.unshift(u.txMonth);
   return pageHead('Activity','',acts)+`<div class="hscroll months" id="monthRow">${months.map(k=>{const [yy,mm]=k.split('-').map(Number);return `<button class="chip" data-act="pickMonth" data-v="${k}" aria-pressed="${u.txMonth===k}">${monS(mm-1)}${yy!==new Date().getFullYear()?' '+yy:''}</button>`}).join('')}</div>
@@ -770,20 +768,57 @@ function calendarHTML(month,byDate,sel){
 const compact=v=>P().hide?'•':v>=1000?(v/1000).toFixed(v>=10000?0:1)+'k':v>=100?Math.round(v)+'':v>=10?v.toFixed(1):v.toFixed(v>=1?1:2).replace(/^0/,'');
 function txRow(t){
   let ico,color,title,sub,amt,cls=t.type,extra='';
-  const pills=[t.refund?'refund':'',t.inst?t.inst:'',t.lines&&t.lines.length?`${t.lines.length} items`:'',t.split?'split':'',t.fx?`${(countryOf(t)||fxInfo(t.fx.cur)||{}).flag||'💱'} ${curFmt(t.fx.orig,t.fx.cur)}`:''].filter(Boolean);
+  const ncat=t.lines&&t.lines.length?new Set(t.lines.map(l=>l.catId||t.catId)).size:0;
+  const pills=[t.refund?'refund':'',t.inst?t.inst:'',t.lines&&t.lines.length?`🧾 ${t.lines.length} items`:'',t.split?'split':'',t.fx?`${(countryOf(t)||fxInfo(t.fx.cur)||{}).flag||'💱'} ${curFmt(t.fx.orig,t.fx.cur)}`:''].filter(Boolean);
   if(t.type==='transfer'){ico='↔️';color='#3450AE';title=`${acctName(t.accountId)} → ${acctName(t.toAccountId)}`;sub=t.note||(isSavings(t.toAccountId)?'Moved to savings':'Transfer');amt=money(t.amount);}
   else if(t.type==='debt'){const k=DEBT_KIND[t.debtKind]||[t.dir,t.dir==='give'?'Lent to':'Borrowed from'];ico='🤝';color='#B7791F';title=`${k[1]} ${personName(t.personId)}`;sub=[t.note,acctName(t.accountId)].filter(Boolean).join(' · ');amt=(t.dir==='give'?'−':'+')+money(t.amount);}
   else if(t.type==='invest'){const h=holding(t.investmentId);ico='📈';color='#8A4FC4';title=`${t.dir==='sell'?'Sold':'Invested in'} ${h?h.name:'investment'}`;sub=[t.units?t.units+' units':'',t.note,acctName(t.accountId)].filter(Boolean).join(' · ');amt=(t.dir==='sell'?'+':'−')+money(t.amount);}
   else { const c=cat(t.catId);ico=c.icon||'•';color=c.color;title=t.note||t.item||c.name;
-    sub=[c.name+(t.item&&t.note?' · '+t.item:''),t.split&&t.split.paidBy!=='me'?'paid by '+personName(t.split.paidBy):acctName(t.accountId),(t.tags||[]).map(x=>'#'+x).join(' ')].filter(Boolean).join(' · ');
+    sub=[ncat>1?[...new Set(t.lines.map(l=>l.catId||t.catId))].map(x=>cat(x).icon||'').join('')+` ${ncat} categories`:c.name+(t.item&&t.note?' · '+t.item:''),t.split&&t.split.paidBy!=='me'?'paid by '+personName(t.split.paidBy):acctName(t.accountId),(t.tags||[]).map(x=>'#'+x).join(' ')].filter(Boolean).join(' · ');
     amt=(t.type==='expense'&&!t.refund?'−':'+')+money(t.type==='expense'&&t.split?myShare(t):t.amount); if(t.refund) cls='income';
     if(t.split) extra=`<small>of ${money(t.amount)}</small>`; }
   const id=esc(t.id);
   return `<div class="swipe" data-id="${id}"><div class="acts"><div><button class="dup" data-act="rowDup" data-v="${id}" tabindex="-1">↻<span>Again</span></button></div><div><button class="edit" data-act="edit" data-v="${id}" tabindex="-1">✎<span>Edit</span></button><button class="del" data-act="rowDel" data-v="${id}" tabindex="-1">🗑<span>Delete</span></button></div></div>
-    <button class="tx" data-act="edit" data-v="${id}">${rowAvatar(t,ico,color)}
+    <button class="tx" data-act="view" data-v="${id}">${rowAvatar(t,ico,color)}
     <span><div class="t1">${esc(title)}${pills.map(p=>`<span class="pill">${esc(p)}</span>`).join('')}</div><div class="t2">${t.accountId&&acct(t.accountId)?`<i class="adot" style="background:${accColor(acct(t.accountId))}"></i>`:''}${esc(sub)}</div></span><span class="amt ${cls}">${amt}${extra}</span></button></div>`;
 }
 
+/* ---------- one activity in detail ----------
+   Tapping a row shows everything about it: for a bill, the categories it splits into, each item
+   with its quantity and cost, and the VAT, service and discount. Edit or add the bill text from here. */
+function openTxView(id){
+  const t=allTx().find(x=>x.id===id); if(!t) return; fd={kind:'txview',id};
+  const sign=t.type==='income'||t.refund?'+':t.type==='expense'?'−':'', cls=t.type==='income'||t.refund?'income':t.type;
+  const c=t.catId?cat(t.catId):null, k=countryOf(t);
+  const title=t.type==='transfer'?`${acctName(t.accountId)} → ${acctName(t.toAccountId)}`:t.note||t.item||(c&&c.name)||'Transaction';
+  const facts=[[ 'Date',fmtD(t.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'})],
+    [t.type==='income'?'Into':t.type==='transfer'?'From':'Paid from',acctName(t.accountId)],
+    t.type==='transfer'?['To',acctName(t.toAccountId)]:null,
+    c&&!(t.lines&&t.lines.length)?['Category',`${c.icon||''} ${c.name}${t.item?' › '+t.item:''}`]:null,
+    t.fx?['Paid in',`${(k||fxInfo(t.fx.cur)||{}).flag||''} ${curFmt(t.fx.orig,t.fx.cur)}${k?' · '+ctryName(k):''} · 1 ${t.fx.cur} = ${t.fx.rate} ${cur()}`]:null,
+    t.split?['Your share',money(myShare(t))]:null,
+    t.goalId&&P().goals.find(g=>g.id===t.goalId)?['Goal',P().goals.find(g=>g.id===t.goalId).name]:null,
+    t.tags&&t.tags.length?['Tags',t.tags.map(x=>'#'+x).join(' ')]:null,
+    t.inst?['Instalment',t.inst]:null,
+    t.imported?['Source','Bank SMS']:t.recurringId||t.auto?['Source','Added automatically']:null].filter(Boolean);
+  let bill='';
+  if(t.lines&&t.lines.length){
+    const al=allocs(t), groups={};
+    t.lines.forEach((l,i)=>{ const cid=l.catId||t.catId; const g=groups[cid]||(groups[cid]={items:[],sub:0,share:0}); g.items.push(l); g.sub+=lineTotal(l); g.share+=(al[i]||{amount:0}).amount; });
+    const ord=Object.entries(groups).sort((a,b)=>b[1].sub-a[1].sub), subtotal=sum(t.lines,lineTotal), whole=sum(ord,([,g])=>g.share)||1;
+    bill=`<div class="bd"><div class="bd-bar">${ord.map(([cid,g])=>`<i style="width:${g.share/whole*100}%;background:${cat(cid).color}"></i>`).join('')}</div>
+      ${ord.map(([cid,g])=>{ const cc=cat(cid); return `<div class="bd-cat"><div class="bd-h"><span class="bd-ic" style="background:${cc.color}22;color:${cc.color}">${cc.icon||'•'}</span><b>${esc(cc.name)}</b><span class="spacer"></span><span class="bd-sub"><b>${money(g.share)}</b>${Math.abs(g.share-g.sub)>10**-dec()?`<small><span>items</span> <span data-notr>${money(g.sub)}</span>${t.tax?' <span>+ VAT</span>':''}${t.service?' <span>+ service</span>':''}${t.discount?' <span>− discount</span>':''}</small>`:''}</span></div>
+        ${g.items.map(l=>`<div class="bd-row"><span class="bd-n"><span>${esc(l.name||l.item||'Item')}</span>${l.item&&l.item!==l.name?`<small>${esc(l.item)}</small>`:''}</span><span class="bd-q">${+l.qty!==1?`<span data-notr>${+l.qty} × ${money(+l.price)}</span>`:''}</span><b>${money(lineTotal(l))}</b></div>`).join('')}</div>`; }).join('')}
+      <div class="bd-tot"><span>Items</span><b>${money(subtotal)}</b>${t.discount?`<span>Discount</span><b>−${money(t.discount)}</b>`:''}${t.service?`<span>Service charge</span><b>${money(t.service)}</b>`:''}${t.tax?`<span>VAT / tax</span><b>${money(t.tax)}</b>`:''}<span class="grand">Total</span><b class="grand">${money(t.amount)}</b></div></div>`;
+  }
+  dlg(esc(title),`<div class="tv-hero"><span class="tv-ic" style="background:${(c&&c.color)||'#3450AE'}22">${t.type==='transfer'?'↔️':(t.lines&&t.lines.length&&new Set(t.lines.map(l=>l.catId)).size>1?'🧾':(c&&c.icon)||'•')}</span>
+      <div><b class="amt ${cls}">${sign}${money(t.amount)}</b>${t.lines&&t.lines.length?`<small>${t.lines.length} item${t.lines.length>1?'s':''} · ${new Set(t.lines.map(l=>l.catId)).size} categor${new Set(t.lines.map(l=>l.catId)).size>1?'ies':'y'}</small>`:''}</div></div>
+    <div class="tv-facts">${facts.map(([a,b])=>`<span>${a}</span><b>${esc(b)}</b>`).join('')}</div>
+    ${bill}
+    ${t.bill?`<details class="tv-more"><summary>Bill text</summary><pre dir="auto">${esc(t.bill)}</pre></details>`:''}
+    ${t.sms?`<details class="tv-more"><summary>Bank SMS</summary><pre dir="auto">${esc(t.sms)}</pre></details>`:''}`,
+    `<button class="btn" data-act="rowDup" data-v="${esc(t.id)}">↻ Again</button>${t.type==='expense'?`<button class="btn" data-act="tvBill">🧾 ${t.bill?'Bill text':'Add bill'}</button>`:''}<span class="spacer"></span><button class="btn primary" data-act="tvEdit">✎ Edit</button>`);
+}
 /* ---------- People ---------- */
 function viewPeople(){
   const pb=peopleBalances(); const ppl=P().people.slice().sort((a,b)=>Math.abs(pb[b.id]||0)-Math.abs(pb[a.id]||0));
@@ -822,13 +857,16 @@ function viewWealth(){
 
   </div><div class="stack">
   <section class="panel"><div class="panel-h"><h2>Savings goals</h2><button class="btn small primary" data-act="goal" data-v="">Add goal</button></div>
-    ${P().goals.length?P().goals.map(g=>{const saved=goalSaved(g);const pct=g.target>0?saved/g.target*100:0;const mLeft=g.date?Math.max(1,(pd(g.date).getFullYear()-new Date().getFullYear())*12+pd(g.date).getMonth()-new Date().getMonth()):null;
-      return `<button class="goal" data-act="goal" data-v="${esc(g.id)}" style="display:block;width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left;padding:12px 0"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(g.name)}</b><span>${money(saved)} / ${money(g.target)}</span></div>
-      <div class="prog"><i style="width:${Math.min(100,pct)}%"></i></div><span class="hint">${pct>=100?'Reached 🎉':`${pct.toFixed(0)}%${mLeft&&g.target>saved?` · save ${money((g.target-saved)/mLeft)} a month to reach it by ${fmtD(g.date,{month:'short',year:'numeric'})}`:''}`}${g.accountId?` · tracks ${esc(acctName(g.accountId))}`:''}</span></button>`}).join('')
+    ${P().goals.length?P().goals.map(g=>{ const saved=goalSaved(g), pct=g.target>0?saved/g.target*100:0, k=goalKind(g), plan=goalPlanText(g);
+      const m=goalMath(g.target,saved,g.date,g.plan&&g.plan.amount,g.plan&&g.plan.freq); const where=goalCount(g)==='hand'?'Kept by hand':`In ${acctName(g.accountId)}${goalCount(g)==='deposits'?' (its own deposits)':''}`;
+      return `<button class="goal goalcard" data-act="goal" data-v="${esc(g.id)}"><span class="gc-ic">${k[1]}</span><span class="gc-b">
+        <span class="gc-h"><b>${esc(g.name)}</b><span>${money(saved)} / ${money(g.target)}</span></span>
+        ${g.note?`<span class="gc-note">${esc(g.note)}</span>`:''}
+        <span class="prog"><i style="width:${Math.min(100,pct)}%"></i></span>
+        <span class="hint">${pct>=100?'Reached 🎉':[`${pct.toFixed(0)}%`,where,plan?`Plan: ${plan}`:'',m.reach?`reaches it around ${fmtD(m.reach,{month:'short',year:'numeric'})}`:g.date&&m.perMonth?`save ${money(m.perMonth)} a month to reach it by ${fmtD(g.date,{month:'short',year:'numeric'})}`:''].filter(Boolean).join(' · ')}</span></span></button>`}).join('')
     :'<p class="muted">A car, Hajj, a wedding, an emergency fund — set a target and see how much to put aside each month.</p>'}
   </section></div></div>`;
 }
-const goalSaved=g=>g.accountId&&acct(g.accountId)?(balances()[g.accountId]||0):(+g.saved||0);
 
 /* ---------- Settings ---------- */
 // big tiles at the top of Settings for the things people look for most
@@ -847,6 +885,10 @@ function quickSettingsHTML(){
 function openWhatsNew(){
   const row=(ic,t,d,act,btn)=>`<div class="wn"><span class="wn-i">${ic}</span><div><b>${t}</b><p>${d}</p>${act?`<button class="btn small primary" data-act="${act}">${btn}</button>`:''}</div></div>`;
   dlg('What’s new in Masroof',`<p class="hint" style="margin-top:0">Version <span data-notr>${APP_VERSION}</span>. Everything is also in Settings.</p>
+    ${row('🧾','Bills read by Claude','Photograph a bill in the Claude app, paste its answer here — every item, its category, VAT and discount are filled in. Add it later to any expense too.','billNew','Add a bill')}
+    ${row('🔍','Tap any activity','See it in full: a bill split by category, each item with its cost, VAT and the total. Edit anything, any time.','','')}
+    ${row('💳','Accounts & cards','See all your cards, edit any of them, and add new ones — your existing cards are never touched.','acctBulk','Open')}
+    ${row('🎯','Goals with a plan','Say what it’s for, which account holds it, and how much goes in each week, month or year — from another account or the cash deposit machine.','goal','New goal')}
     ${row('💱','Any currency, converted',`Pay in dirhams, lira or dollars — from a bank SMS, quick add (“coffee 15 aed”) or the form — and Masroof converts it to ${esc(cur())}, shows the country’s flag and puts it on the map.`,P().fxAuto?'fxOpen':'fxLive',P().fxAuto?'Exchange rates':'Use live rates')}
     ${row('🌍','Your spending world','A real 3D Earth with city lights: glowing bars where you spent, arcs from home, and a month-by-month replay. Night or day view.','openMap','Open the map')}
     ${row(FACE_ICON,'Face ID unlock','Open Masroof with your face. Your passcode still works.',bioCapable&&!hasBio?'bioToggle':'',bioCapable&&!hasBio?'Turn on Face ID':'')}
@@ -1183,7 +1225,7 @@ function openTx(id,preset){
       split:t.split?{on:true,paidBy:t.split.paidBy||'me',who:t.split.shares.map(s=>s.who),mode:t.split.mode||'equal',custom:Object.fromEntries(t.split.shares.map(s=>[s.who,String(s.amount)]))}:{on:false,paidBy:'me',who:['me'],mode:'equal',custom:{}},
       fx:t.fx?{on:true,cur:t.fx.cur,orig:String(t.fx.orig),rate:String(t.fx.rate),auto:!!t.fx.est}:{on:false,cur:defFx(),orig:'',rate:'',auto:true},
       personId:t.personId||'',due:t.due||'',debtKind:t.debtKind||(t.dir==='receive'?'borrowed':'lent'),investmentId:t.investmentId||'',invDir:t.dir||'buy',units:t.units?String(t.units):'',
-      receipt:t.receipt||null,auto:t.auto,demo:t.demo,recurringId:t.recurringId,ts:t.ts,imported:t.imported,refund:!!t.refund,inst:t.inst,repeatCount:''};
+      receipt:t.receipt||null,bill:t.bill||'',_origAmt:t.imported?t.amount:null,auto:t.auto,demo:t.demo,recurringId:t.recurringId,ts:t.ts,imported:t.imported,refund:!!t.refund,inst:t.inst,repeatCount:''};
   } else {
     const acc=defaultAcct(); const save=(P().accounts.find(a=>hasRole(a,'savings')&&a.id!==acc)||P().accounts.find(a=>a.id!==acc)||{}).id;
     draft={id:null,type:'expense',amount:'',catId:null,item:'',accountId:acc,toAccountId:save,date:todayStr(),note:'',tags:'',manual:false,repeat:false,freq:'monthly',
@@ -1279,8 +1321,8 @@ function fxBlock(d){
 }
 function expenseBody(d){
   const ro=d.itemized||d.fx.on; let h='';
-  const showScan=canImages||d.receipt||d._blobUrl;
-  if(showScan) h+=`<div class="scan">${canImages?`<button class="btn small" data-act="scan">📷 Scan receipt</button>`:''}<span class="hint" id="scanMsg" style="flex:1">${esc(d._scanMsg||'Read on your phone — the photo never leaves it')}</span>${d.receipt||d._blobUrl?`<button class="btn small" data-act="viewReceipt">View</button>`:''}</div>`;
+  h+=billBox(d);
+  if(d.receipt||d._blobUrl) h+=`<div class="scan"><span class="hint" style="flex:1">A receipt photo is saved with this expense.</span><button class="btn small" data-act="viewReceipt">View photo</button></div>`;
   if(d._showReceipt&&d._blobUrl) h+=`<img class="receipt-img" src="${esc(d._blobUrl)}" alt="Receipt photo">`;
   h+=amountField(d,ro,ro?'Total':(d.refund?'Refund amount':'Amount'));
   h+=noteField(d,'What / where','e.g. Pizza Hut, Lulu, Omantel');
@@ -1349,7 +1391,7 @@ function updateCalc(){
   const amt=$('#amt'); if(amt&&amt.readOnly) amt.value=c.total?money(c.total).replace(/,/g,''):'';
   if(d.itemized&&d.type==='expense'){ c.lineTotals.forEach((v,i)=>{const e=$('#lt-'+i); if(e) e.textContent=v?money(v):'';});
     const set=(id,v)=>{const e=$(id); if(e) e.textContent=v}; set('#subT',money(c.subtotal)); set('#taxT',d.taxMode==='pct'&&c.taxAmt?'= '+money(c.taxAmt):''); set('#svcT',d.serviceMode==='pct'&&c.serviceAmt?'= '+money(c.serviceAmt):''); set('#totT',money(c.total)+' '+cur());
-    const hint=$('#scanTotHint'); if(hint) hint.textContent=d._scanTotal&&Math.abs(d._scanTotal-c.total)>10**-dec()*5?`The receipt says ${money(d._scanTotal)} — check the items, tax or discount.`:''; }
+    const hint=$('#scanTotHint'); if(hint) hint.textContent=d._scanTotal&&Math.abs(d._scanTotal-c.total)>10**-dec()*5?`The bill’s total is ${money(d._scanTotal)} — check the items, VAT or discount.`:d._origAmt&&Math.abs(d._origAmt-c.total)>10**-dec()*5?`Your bank recorded ${money(d._origAmt)} — check the items, VAT or discount.`:''; }
   const ss=$('#shareSum');
   if(ss&&d.split.on){ const sh=c.shares; const mine=sh.me||0; const payer=d.split.paidBy;
     let t=`Your share: ${money(mine)}. `;
@@ -1418,8 +1460,6 @@ async function saveDraft(){
   for(const k of ['auto','demo','recurringId','imported','inst']) if(d[k]) tx[k]=d[k];
   if(d.type==='expense'&&d.refund){ tx.refund=true; delete tx.split; }
   tx.receipt=d.receipt||undefined; if(!tx.receipt) delete tx.receipt;
-  if(d._blob&&assetsNs){ const btn=$('#dSaveBtn'); if(btn){btn.disabled=true;btn.textContent='Saving receipt…';}
-    try{const r=await assetsNs.upload(d._blob,{type:'image/jpeg'}); tx.receipt=r.id;}catch(e){toast('Receipt photo couldn\u2019t be stored — the details are saved');} }
   let profileChanged=false;
   if(d.repeat&&!d.id){
     const r={id:newId(),freq:d.freq,day:pd(d.date).getDate()}; for(const f of REC_FIELDS) if(tx[f]!=null) r[f]=clone(tx[f]);
@@ -1428,8 +1468,13 @@ async function saveDraft(){
     if(d.date>todayStr()){ r.next=d.date; persist('profile'); $('#dlg').close(); toast('Scheduled — first on '+shortD(d.date)); render(); return; }
     r.next=advance(r,d.date); tx.recurringId=r.id;
   }
+  if(d.bill&&d.type==='expense') tx.bill=String(d.bill).slice(0,8000);
   const touched=new Set(); let old=null;
   if(d.id) for(const [k,arr] of Object.entries(state.months)){const i=arr.findIndex(t=>t.id===d.id); if(i>=0){old=arr.splice(i,1)[0];touched.add(k);}}
+  // an edit keeps what the form doesn't show: the bank SMS, where it was, the goal it belongs to
+  if(old) for(const f of ['sms','smsKey','loc','ctry','goalId']) if(old[f]!=null&&tx[f]==null) tx[f]=old[f];
+  // an itemized bill paid in another currency keeps the original amount
+  const bfx=tx.lines&&(d._billFx||(old&&old.fx)); if(bfx&&!tx.fx&&bfx.orig>0) tx.fx={cur:bfx.cur,orig:bfx.orig,rate:fxRound(tx.amount/bfx.orig)};
   const k=d.date.slice(0,7); (state.months[k]||(state.months[k]=[])).push(tx); touched.add(k);
   if(tx.note&&tx.catId&&!tx.lines){learn(tx.note,tx.catId,tx.item); profileChanged=true;}
   if(tx.lines) for(const l of tx.lines){ if(l.name&&l.item) learn(l.name,l.catId,l.item); const cc=findCat(l.catId); if(cc&&l.item&&!cc.items.includes(l.item)) cc.items.push(l.item); profileChanged=true; }
@@ -1477,14 +1522,99 @@ function openHolding(id){
     <div class="field"><label>Type</label><select class="sel" data-fd="type">${Object.entries(INV_TYPES).map(([v,l])=>`<option value="${v}"${fd.type===v?' selected':''}>${l}</option>`).join('')}</select></div>`,
     `<button class="btn danger" data-act="hDelete">Delete</button><span class="spacer"></span><button class="btn" data-act="close">Close</button><button class="btn primary" data-act="hSave">Save details</button>`);
 }
+/* ---------- savings goals ----------
+   A goal can live in one of your accounts (its whole balance counts, or only the deposits made
+   for it) or be kept by hand. A plan says how much goes in each week, month or year and where it
+   comes from: another account, the bank's cash deposit machine, or by hand. Deposits can be
+   recorded automatically as transfers tagged with the goal (tx.goalId). */
+const GOAL_KINDS=[['car','🚗','Car'],['home','🏠','House'],['hajj','🕋','Hajj & Umrah'],['wedding','💍','Wedding'],['travel','✈️','Travel'],['study','🎓','Education'],['emergency','🛟','Emergency fund'],['other','🎯','Other']];
+const goalKind=g=>GOAL_KINDS.find(k=>k[0]===g.kind)||GOAL_KINDS[GOAL_KINDS.length-1];
+const goalCount=g=>g.accountId&&acct(g.accountId)?(g.count||'balance'):'hand';
+const goalDeposits=g=>allTx().filter(t=>t.goalId===g.id).sort((a,b)=>a.date<b.date?1:-1);
+function goalSaved(g){ const c=goalCount(g); if(c==='balance') return balances()[g.accountId]||0; return (+g.saved||0)+(c==='deposits'?sum(goalDeposits(g),t=>t.amount):0); }
+const FREQ_WORD={weekly:'a week',monthly:'a month',yearly:'a year'};
+const cashAcct=()=>P().accounts.find(a=>a.type==='cash');
+function goalPlanText(g){ const pl=g.plan; if(!pl||!(pl.amount>0)||!FREQ_WORD[pl.freq]) return '';
+  const src=pl.source==='account'&&acct(pl.fromId)?`from ${acctName(pl.fromId)}`:pl.source==='cdm'?'by cash deposit machine':'by hand';
+  return `${money(pl.amount)} ${FREQ_WORD[pl.freq]} ${src}`; }
+// how much is needed per period to hit the target by the date, and when the plan gets there
+function goalMath(target,saved,date,amt,freq){
+  const left=Math.max(0,target-saved), out={left}; const per={weekly:7,monthly:30.44,yearly:365.25}[freq];
+  if(date){ const days=Math.max(1,dayDiff(todayStr(),date)); out.perMonth=left/Math.max(1,days/30.44); out.perWeek=left/Math.max(1,days/7); out.perYear=left/Math.max(1,days/365.25); }
+  if(amt>0&&per&&left>0){ const n=Math.ceil(left/amt); out.reach=ymd(addDays(new Date(),Math.round(n*per))); out.n=n; }
+  return out; }
 function openGoal(id){
-  const g=id?P().goals.find(x=>x.id===id):null;
-  fd=g?{kind:'goal',...g,target:String(g.target),saved:String(g.saved||''),add:''}:{kind:'goal',id:null,name:'',target:'',date:'',accountId:'',saved:'',add:''};
-  dlg(g?esc(g.name):'New savings goal',`<div class="field"><label>Goal</label><input class="inp" value="${esc(fd.name)}" data-fd="name" placeholder="e.g. New car, Emergency fund"></div>
-    <div class="two"><div class="field"><label>Target (${esc(cur())})</label><input class="inp" inputmode="decimal" value="${esc(fd.target)}" data-fd="target"></div><div class="field"><label>By (optional)</label><input type="date" class="inp" value="${esc(fd.date||'')}" data-fd="date"></div></div>
-    <div class="field"><label>Track progress with</label><select class="sel" data-fd="accountId"><option value="">Amounts I add by hand</option>${P().accounts.map(a=>`<option value="${esc(a.id)}"${a.id===fd.accountId?' selected':''}>Balance of ${esc(a.name)}</option>`).join('')}</select></div>
-    ${g&&!g.accountId?`<div class="sect"><div class="field"><label>Add to this goal (${esc(cur())})</label><div style="display:flex;gap:8px"><input class="inp" inputmode="decimal" data-fd="add" style="flex:1"><button class="btn small primary" data-act="gAdd">Add</button></div><p class="hint">Saved so far: ${money(+g.saved||0)}</p></div></div>`:''}`,
-    `${g?'<button class="btn danger" data-act="gDelete">Delete</button>':''}<span class="spacer"></span><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="gSave">Save</button>`);
+  const g=id?P().goals.find(x=>x.id===id):null, pl=(g&&g.plan)||{};
+  fd={kind:'goal',id:g?g.id:null,demo:g&&g.demo,gkind:g?g.kind||'other':'',name:g?g.name:'',note:g?g.note||'':'',target:g?String(g.target):'',date:g?g.date||'':'',
+    accountId:g?g.accountId||'':'',count:g?(g.accountId?g.count||'balance':'deposits'):'deposits',saved:g&&+g.saved?String(g.saved):'',
+    amt:pl.amount?String(pl.amount):'',freq:pl.freq||'monthly',start:pl.start||todayStr(),source:pl.source||'account',fromId:pl.fromId||(P().accounts.find(a=>hasRole(a,'salary'))||{}).id||'',auto:g?!!g.recurringId:true,
+    add:'',addSrc:pl.source||'account',addFrom:pl.fromId||''};
+  renderGoal();
+}
+function goalHintHTML(){ const f=fd, target=num(f.target); if(!(target>0)) return 'Enter a target to see how much to save.';
+  const saved=f.id?goalSaved(P().goals.find(x=>x.id===f.id)):(f.accountId&&f.count==='balance'?(balances()[f.accountId]||0):num(f.saved));
+  const m=goalMath(target,saved,f.date,num(f.amt),f.freq); if(m.left<=0) return 'Already reached 🎉';
+  const parts=[];
+  if(f.date) parts.push(`To reach ${money(target)} by ${fmtD(f.date,{month:'short',year:'numeric'})}: <b>${money(m.perMonth)}</b> a month, or ${money(m.perWeek)} a week.`);
+  if(m.reach) parts.push(`With ${money(num(f.amt))} ${FREQ_WORD[f.freq]} you reach it around <b>${fmtD(m.reach,{month:'short',year:'numeric'})}</b>.`);
+  if(f.date&&m.reach&&m.reach>f.date) parts.push(`<span style="color:var(--warn)">That’s after your date — save more or move the date.</span>`);
+  return parts.join('<br>')||`${money(m.left)} to go.`; }
+function renderGoal(){
+  const f=fd, g=f.id?P().goals.find(x=>x.id===f.id):null, bal=balances(), body=$('#dlg .dlg-b'), sc=body?body.scrollTop:0;
+  if(!acct(f.fromId)||f.fromId===f.accountId) f.fromId=(P().accounts.find(a=>a.id!==f.accountId&&hasRole(a,'salary'))||P().accounts.find(a=>a.id!==f.accountId)||{}).id||'';
+  const saved=g?goalSaved(g):0, pct=g&&g.target>0?Math.min(100,saved/g.target*100):0, inBank=!!f.accountId;
+  const acctBtn=a=>{ const c=accColor(a); return `<button class="acc-mini${f.accountId===a.id?' on':''}" data-act="goalSet" data-v="accountId:${esc(a.id)}"><span class="am-chip" style="background:${accGrad(c)}"></span><span class="am-t"><b>${esc(a.name)}</b><small>${esc([a.bank,TYPE_LABEL[a.type]].filter(Boolean).join(' · '))}${a.last4?` · <span data-notr>•••• ${esc(a.last4)}</span>`:''}</small></span><span class="am-bal">${money(bal[a.id]||0)}</span></button>`; };
+  const deps=g?goalDeposits(g).slice(0,5):[];
+  dlg(g?`${goalKind(g)[1]} ${esc(g.name)}`:'New savings goal',`
+    ${g?`<div class="goal-top"><div class="gt-amt"><b>${money(saved)}</b><span>of ${money(g.target)}</span></div><div class="prog"><i style="width:${pct}%"></i></div><span class="hint">${pct>=100?'Reached 🎉':`${pct.toFixed(0)}% · ${money(Math.max(0,g.target-saved))} to go`}</span></div>`:''}
+${g?`<div class="sect"><div class="field"><span class="lab">Add money now</span><div style="display:flex;gap:8px"><input class="inp" inputmode="decimal" data-fd="add" placeholder="Amount" style="flex:1">
+      ${inBank?`<select class="sel" data-fd="addSrc" style="flex:1"><option value="account"${f.addSrc==='account'?' selected':''}>From an account</option><option value="cdm"${f.addSrc==='cdm'?' selected':''}>Cash deposit machine</option><option value="hand"${f.addSrc==='hand'?' selected':''}>Just note it</option></select>`:''}
+      <button class="btn small primary" data-act="gAdd">Add</button></div>
+      ${inBank&&f.addSrc==='account'?`<select class="sel" data-fd="addFrom" style="margin-top:8px">${P().accounts.filter(a=>a.id!==f.accountId).map(a=>`<option value="${esc(a.id)}"${a.id===(f.addFrom||f.fromId)?' selected':''}>From ${esc(a.name)}</option>`).join('')}</select>`:''}</div>
+      ${deps.length?`<div class="field"><span class="lab">Recent deposits</span><div class="tx-group">${deps.map(txRow).join('')}</div></div>`:''}</div>`:''}
+    <div class="field"><span class="lab">1 · What are you saving for?</span><div class="chips">${GOAL_KINDS.map(([k,ic,l])=>`<button class="chip" data-act="goalSet" data-v="gkind:${k}" aria-pressed="${f.gkind===k}">${ic} ${l}</button>`).join('')}</div></div>
+    <div class="field"><label>Goal name</label><input class="inp" value="${esc(f.name)}" data-fd="name" placeholder="e.g. Land Cruiser down payment"></div>
+    <div class="field"><label>Details <span class="muted">(optional)</span></label><textarea class="inp" rows="2" data-fd="note" placeholder="e.g. 30% down payment, buying in summer 2027">${esc(f.note)}</textarea></div>
+    <div class="field"><span class="lab">2 · Target</span><div class="two"><div class="field"><label>Amount (${esc(cur())})</label><input class="inp" inputmode="decimal" value="${esc(f.target)}" data-fd="target" placeholder="e.g. 5000"></div><div class="field"><label>Reach it by <span class="muted">(optional)</span></label><input type="date" class="inp" value="${esc(f.date)}" data-fd="date"></div></div></div>
+    <div class="field"><span class="lab">3 · Where is the money kept?</span><div class="acc-list">${P().accounts.map(acctBtn).join('')}
+      <button class="acc-mini${!inBank?' on':''}" data-act="goalSet" data-v="accountId:"><span class="am-chip cash">✋</span><span class="am-t"><b>Not in a bank</b><small>Cash at home, or amounts I note by hand</small></span></button></div>
+      ${inBank?`<div class="seg goalseg" style="margin-top:8px"><button data-act="goalSet" data-v="count:balance" aria-pressed="${f.count==='balance'}">Whole balance counts</button><button data-act="goalSet" data-v="count:deposits" aria-pressed="${f.count==='deposits'}">Only money I put in for it</button></div>
+        <p class="hint">${f.count==='balance'?`Everything in ${esc(acctName(f.accountId))} counts — best when this account is only for this goal.`:`Only deposits made for this goal count, so the account can hold other money too.`}</p>`:''}
+      ${!inBank||f.count==='deposits'?`<div class="field"><label>Already saved for it (${esc(cur())})</label><input class="inp" inputmode="decimal" value="${esc(f.saved)}" data-fd="saved" placeholder="0"></div>`:''}</div>
+    <div class="field"><span class="lab">4 · Saving plan</span>
+      <div class="seg goalseg">${[['weekly','Weekly'],['monthly','Monthly'],['yearly','Yearly'],['none','No fixed plan']].map(([v,l])=>`<button data-act="goalSet" data-v="freq:${v}" aria-pressed="${f.freq===v}">${l}</button>`).join('')}</div>
+      ${f.freq!=='none'?`<div class="two" style="margin-top:8px"><div class="field"><label>Deposit each ${f.freq==='weekly'?'week':f.freq==='yearly'?'year':'month'} (${esc(cur())})</label><input class="inp" inputmode="decimal" value="${esc(f.amt)}" data-fd="amt" placeholder="e.g. 200"></div>
+        <div class="field"><label>Starting on</label><input type="date" class="inp" value="${esc(f.start)}" data-fd="start"></div></div>
+      <div class="field"><label>Money comes from</label><div class="chips">${[['account','🏦','Another account'],['cdm','🏧','Cash deposit machine'],['hand','✋','By hand']].map(([v,ic,l])=>`<button class="chip" data-act="goalSet" data-v="source:${v}" aria-pressed="${f.source===v}">${ic} ${l}</button>`).join('')}</div>
+        ${f.source==='account'?`<select class="sel" data-fd="fromId" style="margin-top:8px">${P().accounts.filter(a=>a.id!==f.accountId).map(a=>`<option value="${esc(a.id)}"${a.id===f.fromId?' selected':''}>${esc(a.name)}${a.last4?' · •••• '+esc(a.last4):''}</option>`).join('')}</select>`:''}
+        ${f.source==='cdm'?`<p class="hint">You deposit cash at the bank’s machine${cashAcct()?` — it’s recorded as a move from ${esc(cashAcct().name)}`:''}.</p>`:''}</div>
+      ${inBank&&f.source!=='hand'?`<label class="toggle-row"><span>Record each deposit automatically<br><span class="muted" style="font-size:13px">On the day, as a ${f.source==='cdm'?'cash deposit':'transfer'} into ${esc(acctName(f.accountId))}</span></span><input type="checkbox" class="tick" data-goalauto${f.auto?' checked':''}></label>`:''}`:''}
+      <p class="hint goal-hint" id="goalHint">${goalHintHTML()}</p></div>
+`,
+    `${g?'<button class="btn danger" data-act="gDelete">Delete</button>':''}<span class="spacer"></span><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="gSave">Save goal</button>`);
+  const nb=$('#dlg .dlg-b'); if(nb) nb.scrollTop=sc;
+}
+// the transaction a deposit makes: a move from the source account (or cash) into the goal's account
+function goalDepositTx(g,amount,source,fromId,date){
+  const tx={id:newId(),amount:round(amount,dec()),date:date||todayStr(),note:`Goal: ${g.name}`,goalId:g.id,ts:Date.now()};
+  const from=source==='account'?(acct(fromId)?fromId:null):source==='cdm'?(cashAcct()||{}).id:null;
+  if(from&&from!==g.accountId){ tx.type='transfer'; tx.accountId=from; tx.toAccountId=g.accountId; }
+  else { tx.type='income'; tx.accountId=g.accountId; tx.catId=(findCat('inc_other')?'inc_other':P().categories.income[0].id); tx.note=`${source==='cdm'?'Cash deposit':'Deposit'} · Goal: ${g.name}`; }
+  return tx; }
+function saveGoal(){
+  const p=P(), f=fd; const name=(f.name||'').trim()||(f.gkind?goalKind({kind:f.gkind})[2]:''), target=round(num(f.target),dec());
+  if(!name||!(target>0)) return fErr('Add a name and a target amount.');
+  const old=f.id?p.goals.find(x=>x.id===f.id):null; const amt=round(num(f.amt),dec());
+  const g={id:f.id||'g_'+newId(),kind:f.gkind||'other',name,note:(f.note||'').trim(),target,date:f.date||'',accountId:f.accountId||'',count:f.accountId?f.count:'hand',saved:round(num(f.saved),dec()),demo:f.demo};
+  if(f.freq!=='none'&&amt>0) g.plan={amount:amt,freq:f.freq,start:f.start||todayStr(),source:f.source,fromId:f.source==='account'?f.fromId:''};
+  // the repeating deposit: replace the old one
+  if(old&&old.recurringId) p.recurring=p.recurring.filter(r=>r.id!==old.recurringId);
+  if(g.plan&&g.accountId&&g.plan.source!=='hand'&&f.auto){
+    const t=goalDepositTx(g,amt,g.plan.source,g.plan.fromId,g.plan.start); const r={id:newId(),freq:g.plan.freq,day:pd(g.plan.start).getDate()};
+    for(const k of REC_FIELDS) if(t[k]!=null) r[k]=clone(t[k]);
+    let next=g.plan.start; let n=0; while(next<todayStr()&&n++<600) next=advance(r,next); r.next=next; p.recurring.push(r); g.recurringId=r.id; }
+  if(old){ const i=p.goals.indexOf(old); p.goals[i]=g; } else p.goals.push(g);
+  persist('profile'); $('#dlg').close(); celebrate(); toast(g.recurringId?`Goal saved — ${goalPlanText(g)}, recorded automatically`:'Goal saved'); render();
 }
 function addPerson(name){ name=(name||'').trim(); if(!name) return null; const ex=P().people.find(p=>norm(p.name)===norm(name)); if(ex) return ex.id; const id='p_'+newId(); P().people.push({id,name}); persist('profile'); return id; }
 function addHolding(name,type){ name=(name||'').trim(); if(!name) return null; const id='h_'+newId(); P().investments.push({id,name,type:type||'other',history:[],baseCost:0}); persist('profile'); return id; }
@@ -1895,7 +2025,7 @@ function loadDemo(){
   const gold={id:'h_demo_gold',name:'Gold (50 g)',type:'gold',units:50,baseCost:1100,history:[{date:ymd(addDays(new Date(),-20)),value:1260}],demo:true};
   const fund={id:'h_demo_fund',name:'MSX index fund',type:'funds',baseCost:0,history:[],demo:true};
   for(const h of [gold,fund]) if(!holding(h.id)) P().investments.push(h);
-  if(!P().goals.some(g=>g.demo)) P().goals.push({id:'g_demo',name:'Emergency fund',target:3000,accountId:save||'',date:ymd(new Date(new Date().getFullYear()+1,5,1)),demo:true});
+  if(!P().goals.some(g=>g.demo)) P().goals.push({id:'g_demo',kind:'emergency',name:'Emergency fund',note:'Six months of essentials',target:3000,accountId:save||'',count:'balance',date:ymd(new Date(new Date().getFullYear()+1,5,1)),plan:{amount:150,freq:'monthly',start:todayStr(),source:'account',fromId:(P().accounts.find(a=>hasRole(a,'salary'))||{}).id||''},demo:true});
   const food=[['Pizza','Pizza Hut',3,6],['Burger','McDonald\u2019s',1.5,3.5],['Rice & biryani','Biryani house',1.5,3],['Shawarma','Shawarma stand',.5,1.2],['Coffee','Starbucks',1.2,2.2],['Tea & karak','Karak',.1,.3],['Chicken','KFC',2,4]];
   const touched=new Set(); const push=t=>{t.id=newId();t.demo=true;t.ts=Date.now();const k=t.date.slice(0,7);(state.months[k]||(state.months[k]=[])).push(t);touched.add(k)};
   const end=new Date(); let d=addDays(end,-120);
@@ -2088,36 +2218,50 @@ function openAccountSheet(id){
 }
 /* add several accounts in one go */
 const nextCardColor=(skip=[])=>{ const used=new Set([...P().accounts.map(a=>(a.color||'').toLowerCase()),...skip]); return (CARD_COLORS.find(([,c])=>!used.has(c.toLowerCase()))||CARD_COLORS[(P().accounts.length+skip.length)%CARD_COLORS.length])[1]; };
-const blankBulk=()=>({bank:'',name:'',last4:'',type:'bank',opening:''});
-function openBulk(){ fd={kind:'bulk',rows:[blankBulk(),blankBulk(),blankBulk()],tidy:true}; renderBulk(); }
+const blankBulk=()=>({type:'bank',bank:'',name:'',last4:'',opening:'',limit:'',stmtDay:'',dueDay:''});
+const BULK_TYPES=[['bank','🏦','Bank account'],['card','💳','Credit card'],['savings','🐖','Savings'],['wallet','📱','E‑wallet'],['cash','💵','Cash']];
+let bulkRows=null; // new accounts being typed, kept while you open an existing card to edit it
+// "Accounts & cards": your existing cards (tap to edit) and a form to add new ones. Saving only ever adds.
+function openBulk(){ if(!bulkRows) bulkRows=[blankBulk()]; fd={kind:'bulk',rows:bulkRows}; renderBulk(); }
 function renderBulk(){
-  const f=fd; const sample=P().accounts.filter(a=>['a_bank','a_card','a_save'].includes(a.id)&&!allTx().some(t=>t.accountId===a.id||t.toAccountId===a.id));
-  const body=$('#dlg .dlg-b'); const sc=body?body.scrollTop:0;
-  dlg('Add your accounts',`<p class="hint" style="margin-top:0">One line per account or card. The last 4 digits let Masroof put bank SMS on the right account.</p>
-    <div class="bulk">${f.rows.map((r,i)=>`<div class="bulk-r"><span class="bulk-n" style="background:${accGrad(r.color||CARD_COLORS[i%CARD_COLORS.length][1])}">${i+1}</span>
-      <select class="sel b-bank" data-bulk="${i}.bank" aria-label="Bank"><option value="">Bank…</option>${BANKS.filter(b=>b!=='Cash').map(b=>`<option${r.bank===b?' selected':''}>${esc(b)}</option>`).join('')}</select>
-      <select class="sel b-type" data-bulk="${i}.type" aria-label="Type">${[['bank','Account'],['card','Credit card'],['savings','Savings'],['wallet','E‑wallet']].map(([v,l])=>`<option value="${v}"${r.type===v?' selected':''}>${l}</option>`).join('')}</select>
-      <input class="inp b-name" data-bulk="${i}.name" value="${esc(r.name)}" placeholder="Name, e.g. Salary" aria-label="Name">
-      <input class="inp b-last" data-bulk="${i}.last4" value="${esc(r.last4)}" inputmode="numeric" maxlength="4" placeholder="Last 4" aria-label="Last 4 digits">
-      <input class="inp b-bal" data-bulk="${i}.opening" value="${esc(r.opening)}" inputmode="decimal" placeholder="Balance now" aria-label="Balance now">
-      ${f.rows.length>1?`<button class="icon-btn" data-act="bulkDel" data-v="${i}" aria-label="Remove line">×</button>`:''}</div>`).join('')}</div>
-    <button class="btn wide" data-act="bulkAdd" style="margin-top:10px">＋ Another account</button>
-    ${sample.length?`<label class="toggle-row" style="margin-top:8px"><span>Remove the unused starter accounts<br><span class="muted" style="font-size:13px">${sample.map(a=>esc(a.name)).join(', ')}</span></span><input type="checkbox" class="tick" data-bulk="tidy"${f.tidy?' checked':''}></label>`:''}
-    <p class="hint">For a credit card, enter what you owe as a negative balance, e.g. −120.500.</p>`,
-    `<span class="spacer"></span><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="bulkSave">Save accounts</button>`);
+  const f=fd, list=P().accounts, bal=balances(); const body=$('#dlg .dlg-b'); const sc=body?body.scrollTop:0;
+  const owedLbl=r=>r.type==='card'?'Amount you owe now':r.type==='cash'?'Cash you have now':'Balance now';
+  dlg('Accounts & cards',`<div class="field"><span class="lab">Your accounts and cards (${list.length})</span>
+      <div class="acc-list">${list.map(a=>{ const c=accColor(a); return `<button class="acc-mini" data-act="hubEdit" data-v="${esc(a.id)}"><span class="am-chip" style="background:${accGrad(c)}"></span>
+        <span class="am-t"><b>${esc(a.name)}</b><small>${esc([a.bank,TYPE_LABEL[a.type]||a.type].filter(Boolean).join(' · '))}${a.last4?` · <span data-notr>•••• ${esc(a.last4)}</span>`:''}</small></span>
+        <span class="am-bal">${money(bal[a.id]||0)}</span><span class="am-go">Edit ›</span></button>`; }).join('')||'<p class="hint">None yet.</p>'}</div>
+      <p class="hint">Tap one to change or delete it. Adding new accounts below never changes these.</p></div>
+    <div class="field"><span class="lab">Add new</span><div class="bulk">${f.rows.map((r,i)=>{ const ty=BULK_TYPES.find(x=>x[0]===r.type)||BULK_TYPES[0];
+      return `<div class="bulk-card"><div class="bc-h"><span class="bulk-n" style="background:${accGrad(CARD_COLORS[(list.length+i)%CARD_COLORS.length][1])}">${ty[1]}</span><b>New ${ty[2].toLowerCase()}</b><span class="spacer"></span>${f.rows.length>1?`<button class="icon-btn" data-act="bulkDel" data-v="${i}" aria-label="Remove">×</button>`:''}</div>
+        <div class="chips bc-types">${BULK_TYPES.map(([v,ic,l])=>`<button class="chip" data-act="bulkType" data-v="${i}:${v}" aria-pressed="${r.type===v}">${ic} ${l}</button>`).join('')}</div>
+        <div class="two">${r.type!=='cash'?`<div class="field"><label>Bank</label><select class="sel" data-bulk="${i}.bank"><option value="">Choose…</option>${BANKS.filter(b=>b!=='Cash').map(b=>`<option${r.bank===b?' selected':''}>${esc(b)}</option>`).join('')}</select></div>`:''}
+          <div class="field"><label>Name</label><input class="inp" data-bulk="${i}.name" value="${esc(r.name)}" placeholder="${r.type==='card'?'e.g. Visa Platinum':r.type==='savings'?'e.g. Savings':r.type==='cash'?'e.g. Wallet':'e.g. Salary account'}"></div></div>
+        <div class="two">${r.type!=='cash'?`<div class="field"><label>${r.type==='card'?'Card':'Account'} last 4 digits</label><input class="inp" data-bulk="${i}.last4" value="${esc(r.last4)}" inputmode="numeric" maxlength="4" placeholder="e.g. 1234"></div>`:''}
+          <div class="field"><label>${owedLbl(r)} (${esc(cur())})</label><input class="inp" data-bulk="${i}.opening" value="${esc(r.opening)}" inputmode="decimal" placeholder="0"></div></div>
+        ${r.type==='card'?`<div class="three"><div class="field"><label>Credit limit</label><input class="inp" data-bulk="${i}.limit" value="${esc(r.limit)}" inputmode="decimal" placeholder="e.g. 1000"></div>
+          <div class="field"><label>Statement day</label><select class="sel" data-bulk="${i}.stmtDay"><option value="">—</option>${Array.from({length:28},(_,d)=>d+1).map(d=>`<option${+r.stmtDay===d?' selected':''}>${d}</option>`).join('')}</select></div>
+          <div class="field"><label>Due day</label><select class="sel" data-bulk="${i}.dueDay"><option value="">—</option>${Array.from({length:28},(_,d)=>d+1).map(d=>`<option${+r.dueDay===d?' selected':''}>${d}</option>`).join('')}</select></div></div>`:''}
+      </div>`; }).join('')}</div>
+    <button class="btn wide" data-act="bulkAdd" style="margin-top:10px">＋ Another account or card</button>
+    <p class="hint">The last 4 digits let Masroof put bank SMS on the right account.</p></div>`,
+    `<span class="spacer"></span><button class="btn" data-act="close">Close</button><button class="btn primary" data-act="bulkSave">Save new</button>`);
   const nb=$('#dlg .dlg-b'); if(nb) nb.scrollTop=sc;
 }
 function saveBulk(){
-  const p=P(); const rows=fd.rows.filter(r=>r.bank||r.name.trim()); if(!rows.length) return fErr('Fill in at least one account.');
-  const nums=rows.map(r=>String(r.last4||'').replace(/\D/g,'')).filter(Boolean); const dupN=nums.find((n,i)=>nums.indexOf(n)!==i||acctForNum(n)); if(dupN) return fErr(`•••• ${dupN} is used twice.`);
-  if(fd.tidy) p.accounts=p.accounts.filter(a=>!(['a_bank','a_card','a_save'].includes(a.id)&&!allTx().some(t=>t.accountId===a.id||t.toAccountId===a.id)));
+  const p=P(); const rows=fd.rows.filter(r=>r.bank||r.name.trim()||r.last4||num(r.opening)||r.limit);
+  if(!rows.length) return fErr('Fill in a new account first — or tap Close.');
+  const nums=rows.map(r=>String(r.last4||'').replace(/\D/g,'')).filter(Boolean);
+  for(const n of nums){ if(nums.indexOf(n)!==nums.lastIndexOf(n)) return fErr(`•••• ${n} is used twice.`); const a=acctForNum(n); if(a) return fErr(`•••• ${n} already belongs to ${a.name}.`); }
   const colors=[]; let salary=p.accounts.some(a=>hasRole(a,'salary'));
   for(const r of rows){ const color=nextCardColor(colors); colors.push(color.toLowerCase());
-    const roles=r.type==='savings'?['savings']:r.type==='card'?['spending']:!salary?(salary=true,['salary','spending']):['spending'];
-    const nameGuess=r.name.trim()||(r.bank?r.bank+(r.type==='card'?' card':r.type==='savings'?' savings':''):'Account');
-    p.accounts.push({id:'a_'+newId(),name:nameGuess,bank:r.bank||'',type:r.type,opening:round(num(r.opening),dec()),color,roles,last4:String(r.last4||'').replace(/\D/g,'').slice(-4),smsIds:[]}); }
-  if(!acct(state.ui.acct)) state.ui.acct='all';
-  persist('profile'); $('#dlg').close(); celebrate(); toast(`${rows.length} account${rows.length>1?'s':''} added`); render();
+    const roles=r.type==='savings'?['savings']:r.type==='card'||r.type==='cash'?['spending']:!salary?(salary=true,['salary','spending']):['spending'];
+    const label=(BULK_TYPES.find(x=>x[0]===r.type)||[,,'Account'])[2];
+    const name=r.name.trim()||(r.bank?r.bank+(r.type==='card'?' card':r.type==='savings'?' savings':''):label);
+    const opening=round(r.type==='card'?-Math.abs(num(r.opening)):num(r.opening),dec());
+    const a={id:'a_'+newId(),name,bank:r.type==='cash'?'':r.bank||'',type:r.type,opening,color,roles,last4:String(r.last4||'').replace(/\D/g,'').slice(-4),smsIds:[]};
+    if(r.type==='card'){ a.limit=round(num(r.limit),dec())||null; a.stmtDay=+r.stmtDay||null; a.dueDay=+r.dueDay||null; }
+    p.accounts.push(a); }
+  bulkRows=null; persist('profile'); $('#dlg').close(); celebrate(); toast(`${rows.length} account${rows.length>1?'s':''} added — you now have ${p.accounts.length}`); render();
 }
 /* account editor with live preview */
 function openAcct(id){
@@ -2250,7 +2394,7 @@ function cardBackHTML(d){
 }
 function cardHTML(d,fromBal){ return `<div class="bcard" id="bcard" role="group" aria-roledescription="bank card" aria-label="${esc(d.bank)} ${esc(d.name)}"><div class="bc-inner">${cardFrontHTML(d,fromBal)}${cardBackHTML(d)}</div></div>`; }
 function quickActionsHTML(){
-  const acts=[['add',ICON.plus,'Add',''],['scanNew',ICON.camera,'Scan',''],['add',ICON.swap,'Move','transfer'],['add',ICON.users,'Split','split'],['import',ICON.inbox,'SMS','']];
+  const acts=[['add',ICON.plus,'Add',''],['billNew','🧾','Bill',''],['add',ICON.swap,'Move','transfer'],['add',ICON.users,'Split','split'],['import',ICON.inbox,'SMS','']];
   return `<div class="qa">${acts.map(([a,i,l,p])=>`<button data-act="${a}"${p?` data-preset="${p}"`:''}><span>${i}</span>${l}</button>`).join('')}</div>`;
 }
 function heroSub(i,n){ const ids=accIds();
@@ -2460,7 +2604,7 @@ document.addEventListener('click',async e=>{
   switch(a){
     /* navigation & home */
     case 'tab': u.tab=v; render(); window.scrollTo(0,0); break;
-    case 'rowDup': closeRow(); duplicateTx(v); break;
+    case 'rowDup': closeRow(); if(fd&&fd.kind==='txview'&&$('#dlg').open) $('#dlg').close(); duplicateTx(v); break;
     case 'rowNoop': break;
     case 'txCal': u.txCal=!u.txCal; u.txDay=null; buzz(5); renderTxList(); el.setAttribute('aria-pressed',!!u.txCal); break;
     case 'txDay': u.txDay=u.txDay===v?null:v; buzz(5); renderTxList(); break;
@@ -2492,7 +2636,15 @@ document.addEventListener('click',async e=>{
     case 'quickChip': saveQuick(quickSuggestions()[+el.dataset.i]); break;
     case 'setQuickLimit': { const val=num(($('#quickLimit')||{}).value); if(!(val>0)) return toast('Enter an amount above zero'); p.limits.mode='fixed'; p.limits.daily=round(val,dec()); persist('profile'); render(); toast('Daily limit set'); break; }
     case 'goLimits': state.ui.sOpen=state.ui.sOpen||{}; state.ui.sOpen['Daily spending limit']=true; u.tab='settings'; if(p.limits.mode==='off'){p.limits.mode='smart'; if(!p.limits.monthly) p.limits.monthly=suggestMonthly(); persist('profile');} render(); setTimeout(()=>{const x=$('#limitsPanel'); if(x) x.scrollIntoView({block:'start'});},30); break;
-    case 'scanNew': openTx(null); $('#receiptFile').click(); break;
+    case 'billNew': openTx(null,{_billOpen:true}); break;
+    case 'view': openTxView(v); break;
+    case 'billOpen': if(draft){ draft._billOpen=true; draft._billMsg=''; renderTxDlg(); setTimeout(()=>{const x=$('#dlg [data-billtext]'); if(x){ x.scrollIntoView({block:'center'}); x.focus(); }},40); } break;
+    case 'billClose': if(draft){ draft._billOpen=false; renderTxDlg(); } break;
+    case 'billPrompt': { const ok=await copyText(billPrompt()); toast(ok?'Copied — paste it in Claude with a photo of the bill':'Couldn’t copy',{bad:!ok}); break; }
+    case 'billPaste': try{ const t=await navigator.clipboard.readText(); if(draft&&t){ draft._billText=t; renderTxDlg(); } else toast('Nothing to paste'); }catch(e){ toast('Long-press the box and tap Paste'); } break;
+    case 'billRead': if(draft) readBill(draft); break;
+    case 'tvBill': { const id=fd&&fd.id; openTx(id); if(draft){ draft._billOpen=true; renderTxDlg(); setTimeout(()=>{const x=$('#dlg [data-billtext]'); if(x) x.scrollIntoView({block:'center'});},40); } break; }
+    case 'tvEdit': openTx(fd&&fd.id); break;
     /* tx dialog */
     case 'edit': openTx(v); break;
     case 'close': $('#dlg').close(); break;
@@ -2508,7 +2660,6 @@ document.addEventListener('click',async e=>{
     case 'dDelete': if(await ask('Delete this transaction?','Delete')){ const t=allTx().find(x=>x.id===d.id); removeIds([d.id]); $('#dlg').close(); toast('Deleted',{undo:()=>{const k=t.date.slice(0,7);(state.months[k]||(state.months[k]=[])).push(t);persistMonth(k);render();}}); render(); } break;
     case 'dCopy': { const t=allTx().find(x=>x.id===d.id); $('#dlg').close(); openTx(t.id); draft.id=null; draft.date=todayStr(); draft.auto=false; draft.recurringId=null; draft.receipt=t.receipt||null; renderTxDlg(); break; }
     case 'dPin': { p.quick.push({label:d.note||d.item||cat(d.catId).name,amount:num(d.amount),catId:d.catId,item:d.item,accountId:d.accountId}); persist('profile'); toast('Pinned to Quick add'); break; }
-    case 'scan': $('#receiptFile').click(); break;
     case 'viewReceipt': if(!d._blobUrl&&d.receipt){ d._blobUrl=await receiptURL(d.receipt); if(!d._blobUrl) return toast('Receipt photo not found'); } d._showReceipt=!d._showReceipt; renderTxDlg(); break;
     case 'lnAdd': d.lines.push(blankLine(d.catId)); renderTxDlg(); setTimeout(()=>{const x=document.querySelector(`[data-f="lines.${d.lines.length-1}.name"]`); if(x) x.focus();},30); break;
     case 'lnDel': d.lines.splice(+el.dataset.i,1); renderTxDlg(); break;
@@ -2528,7 +2679,7 @@ document.addEventListener('click',async e=>{
       const data={name,bank:(fd.bank||'').trim(),type:fd.type,opening,color:fd.color,roles:fd.roles.slice(),last4,smsIds};
       if(fd.type==='card'){ data.limit=round(num(fd.limit),dec())||null; data.stmtDay=+fd.stmtDay||null; data.dueDay=+fd.dueDay||null; data.minPct=num(fd.minPct)||null; }
       if(fd.id){ const x=acct(fd.id); Object.assign(x,data); delete x.demoTheme; } else { const nid='a_'+newId(); p.accounts.push({id:nid,...data}); u.acct=nid; }
-      persist('profile'); $('#dlg').close(); celebrate(); toast('Card saved'); render(); break; }
+      { const back=fd.back; persist('profile'); toast('Card saved'); render(); if(back==='hub') openBulk(); else { $('#dlg').close(); celebrate(); } } break; }
     case 'accColor': fd.color=v; renderAcctEditor(!!fd.id); break;
     case 'accRole': fd.roles=fd.roles.includes(v)?fd.roles.filter(r=>r!==v):[...fd.roles,v]; renderAcctEditor(!!fd.id); break;
     case 'accView': openAccountSheet(v); break;
@@ -2538,7 +2689,7 @@ document.addEventListener('click',async e=>{
     case 'accShow': $('#dlg').close(); u.acct=v; u.tab='home'; render(); window.scrollTo(0,0); break;
     case 'pickAcct': u.acct=v; buzz(6); { const y=window.scrollY; render(); window.scrollTo(0,y); } break;
     case 'aDelete': { if(p.accounts.length<2) return fErr('Keep at least one account.'); const used=allTx().some(t=>t.accountId===fd.id||t.toAccountId===fd.id);
-      if(await ask(used?'This account has transactions. They stay in your history. Delete it?':'Delete this account?','Delete')){ p.accounts=p.accounts.filter(x=>x.id!==fd.id); if(u.acct===fd.id) u.acct='all'; persist('profile'); $('#dlg').close(); render(); } break; }
+      if(await ask(used?'This account has transactions. They stay in your history. Delete it?':'Delete this account?','Delete')){ p.accounts=p.accounts.filter(x=>x.id!==fd.id); if(u.acct===fd.id) u.acct='all'; const back=fd.back; persist('profile'); render(); if(back==='hub') openBulk(); else $('#dlg').close(); } break; }
     /* people */
     case 'addPerson': { const i=$('#newPerson'); if(addPerson(i.value)){ render(); } break; }
     case 'person': openPerson(v); break;
@@ -2566,11 +2717,17 @@ document.addEventListener('click',async e=>{
     case 'hDelete': if(await ask('Delete this investment? Its buy/sell entries stay in your history.','Delete')){ p.investments=p.investments.filter(x=>x.id!==fd.id); persist('profile'); $('#dlg').close(); render(); } break;
     /* goals */
     case 'goal': openGoal(v||null); break;
-    case 'gSave': { const name=(fd.name||'').trim(), target=round(num(fd.target),dec()); if(!name||!(target>0)) return fErr('Add a name and a target.');
-      const g={id:fd.id||'g_'+newId(),name,target,date:fd.date||'',accountId:fd.accountId||'',saved:round(num(fd.saved),dec()),demo:fd.demo};
-      if(fd.id){const i=p.goals.findIndex(x=>x.id===fd.id); p.goals[i]=g;} else p.goals.push(g); persist('profile'); $('#dlg').close(); render(); break; }
-    case 'gAdd': { const g=p.goals.find(x=>x.id===fd.id); const add=num(fd.add); if(!(add>0)) return fErr('Enter an amount.'); g.saved=round((+g.saved||0)+add,dec()); persist('profile'); toast(`Added to ${g.name}`); render(); openGoal(g.id); break; }
-    case 'gDelete': if(await ask('Delete this goal?','Delete')){ p.goals=p.goals.filter(x=>x.id!==fd.id); persist('profile'); $('#dlg').close(); render(); } break;
+    case 'gSave': saveGoal(); break;
+    case 'goalSet': { const k=v.slice(0,v.indexOf(':')), val=v.slice(v.indexOf(':')+1); fd[k]=val;
+      if(k==='gkind'&&!fd.name.trim()) fd.name=goalKind({kind:val})[2];
+      if(k==='accountId'&&val===fd.fromId) fd.fromId=(P().accounts.find(a=>a.id!==val)||{}).id||'';
+      renderGoal(); break; }
+    case 'gAdd': { const g=p.goals.find(x=>x.id===fd.id); const add=round(num(fd.add),dec()); if(!(add>0)) return fErr('Enter an amount.');
+      const src=g.accountId?fd.addSrc:'hand';
+      if(src==='hand'||!g.accountId||goalCount(g)==='hand'){ g.saved=round((+g.saved||0)+add,dec()); }
+      else { const tx=goalDepositTx(g,add,src,fd.addFrom||fd.fromId); const k=tx.date.slice(0,7);(state.months[k]||(state.months[k]=[])).push(tx); persistMonth(k); }
+      persist('profile'); celebrate(); toast(`${money(add)} added to ${g.name}`); render(); openGoal(g.id); break; }
+    case 'gDelete': if(await ask('Delete this goal? Deposits already recorded stay in your history.','Delete')){ const g=p.goals.find(x=>x.id===fd.id); if(g&&g.recurringId) p.recurring=p.recurring.filter(r=>r.id!==g.recurringId); p.goals=p.goals.filter(x=>x.id!==fd.id); persist('profile'); $('#dlg').close(); render(); } break;
     /* import & data */
     case 'import': openImport(); break;
     case 'impLocal': imp.text=($('[data-imptext]')||{}).value||imp.text; imp.src='paste'; imp.rows=localParse(imp.text); imp.msg=imp.rows.length?'':imp.seen?'Those messages were imported before.':'No amounts found. Messages need an amount with a currency, like "OMR 4.200".'; renderImport(); break;
@@ -2583,7 +2740,9 @@ document.addEventListener('click',async e=>{
       openTx(null,{type:'transfer',accountId:from,toAccountId:v,amount:String(c?c.due:''),note:'Card payment'}); break; }
     case 'rollover': { if(p.rollover) delete p.rollover; else p.rollover={from:periodRange('month',todayStr())[0]}; persist('profile'); render(false); toast(p.rollover?'Unspent budget now carries into next month':'Budgets reset every month again'); break; }
     case 'acctBulk': openBulk(); break;
-    case 'bulkAdd': fd.rows.push(blankBulk()); renderBulk(); setTimeout(()=>{const x=document.querySelector(`[data-bulk="${fd.rows.length-1}.bank"]`); if(x) x.focus();},30); break;
+    case 'bulkAdd': fd.rows.push(blankBulk()); renderBulk(); { const nb=$('#dlg .dlg-b'); if(nb) nb.scrollTop=nb.scrollHeight; } break;
+    case 'bulkType': { const [i,ty]=v.split(':'); fd.rows[+i].type=ty; renderBulk(); break; }
+    case 'hubEdit': openAcct(v); fd.back='hub'; break;
     case 'bulkDel': fd.rows.splice(+v,1); renderBulk(); break;
     case 'bulkSave': saveBulk(); break;
     case 'smsDismiss': { const S=p.sms||(p.sms={}); S.dismissed=true; persist('profile'); render(false); break; }
@@ -2682,10 +2841,11 @@ document.addEventListener('input',e=>{
     if(t.dataset.f==='note'&&!draft.manual&&(draft.type==='expense'||draft.type==='income')&&!draft.itemized){ const g=guessCategory(t.value,draft.type); const before=draft.catId+'|'+draft.item;
       if(g){draft.catId=g.catId;draft.item=g.item||'';} if(before!==draft.catId+'|'+draft.item){const pos=t.selectionStart;renderTxDlg();const n=$('#note');n.focus();n.setSelectionRange(pos,pos);return;} }
     updateCalc(); return; }
-  if(t.dataset.fd&&fd){ fd[t.dataset.fd]=t.value; if(t.hasAttribute('data-live')) updateAcctPreview(); return; }
-  if(t.dataset.bulk&&fd&&fd.kind==='bulk'){ if(t.dataset.bulk==='tidy') return; const [i,k]=t.dataset.bulk.split('.'); fd.rows[+i][k]=t.value; return; }
+  if(t.dataset.fd&&fd){ fd[t.dataset.fd]=t.value; if(t.hasAttribute('data-live')) updateAcctPreview(); if(fd.kind==='goal'){ const h=$('#goalHint'); if(h) h.innerHTML=goalHintHTML(); } return; }
+  if(t.dataset.bulk&&fd&&fd.kind==='bulk'){ const [i,k]=t.dataset.bulk.split('.'); if(fd.rows[+i]) fd.rows[+i][k]=t.value; return; }
   if(t.dataset.input==='txQ'){ state.ui.txQ=t.value; renderTxList(); return; }
   if(t.matches('[data-imptext]')){ imp.text=t.value; return; }
+  if(t.matches('[data-billtext]')){ if(draft) draft._billText=t.value; return; }
   if(t.matches('[data-fxq]')){ fxQ=t.value; const pos=t.selectionStart; renderFx(); const n=$('#dlg [data-fxq]'); if(n){ n.focus(); n.setSelectionRange(pos,pos); } return; }
   if(t.dataset.imp==='item'){ imp.rows[+t.dataset.i].item=t.value; return; }
 });
@@ -2702,8 +2862,10 @@ document.addEventListener('change',e=>{
     return; }
   if(t.dataset.fd&&fd){ fd[t.dataset.fd]=t.value; if(t.hasAttribute('data-live')) updateAcctPreview(); if((t.dataset.fd==='color'||t.dataset.fd==='type')&&fd.kind==='acct') renderAcctEditor(!!fd.id); return; }
   if(t.dataset.rem){ const o=P().remind; o[t.dataset.rem]=t.type==='checkbox'?t.checked:t.value; persist('profile'); const sc=($('#dlg .dlg-b')||{}).scrollTop; openReminders(); const b=$('#dlg .dlg-b'); if(b) b.scrollTop=sc; return; }
-  if(t.dataset.bulk&&fd&&fd.kind==='bulk'){ if(t.dataset.bulk==='tidy'){ fd.tidy=t.checked; return; } const [i,k]=t.dataset.bulk.split('.'); fd.rows[+i][k]=t.value;
-    if(k==='bank'&&!fd.rows[+i].name) { const inp=document.querySelector(`[data-bulk="${i}.name"]`); if(inp) inp.placeholder=t.value?t.value:'Name, e.g. Salary'; } return; }
+  if(t.dataset.bulk&&fd&&fd.kind==='bulk'){ const [i,k]=t.dataset.bulk.split('.'); if(fd.rows[+i]) fd.rows[+i][k]=t.value;
+    return; }
+  if(t.hasAttribute('data-goalauto')&&fd&&fd.kind==='goal'){ fd.auto=t.checked; return; }
+  if(t.dataset.fd&&fd&&fd.kind==='goal'&&['addSrc','fromId'].includes(t.dataset.fd)){ fd[t.dataset.fd]=t.value; if(t.dataset.fd==='addSrc') renderGoal(); return; }
   if(t.hasAttribute('data-fxauto')){ P().fxAuto=t.checked; persist('profile'); if(t.checked) fxFetch(true); return; }
   if(t.dataset.fxmine){ const m=P().fxMine||(P().fxMine={}); const v=num(t.value); if(v>0) m[t.dataset.fxmine]=v; else delete m[t.dataset.fxmine]; persist('profile'); toast(v>0?'Your rate is saved':'Back to the standard rate'); return; }
   if(t.dataset.imp){ const r=imp.rows[+t.dataset.i]; const f=t.dataset.imp;
@@ -2729,7 +2891,6 @@ document.addEventListener('change',e=>{
   }
 });
 document.addEventListener('toggle',e=>{ const t=e.target; if(t.matches&&t.matches('details.acc')){ state.ui.sOpen=state.ui.sOpen||{}; state.ui.sOpen[t.dataset.k]=t.open; } },true);
-$('#receiptFile').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(f) scanReceipt(f); });
 $('#smsFile').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(f) readSmsFile(f); });
 $('#backupFile').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(f) readBackupFile(f); });
 
@@ -2772,10 +2933,6 @@ function saveNow(){
   saving=saving.then(async()=>{ vaultRec.data=await sealB64(key,payload); vaultRec.updated=Date.now(); await kvSet('vault',vaultRec); })
     .catch(()=>toast('Couldn\u2019t save — is the phone out of storage?',{bad:true}));
   return saving;
-}
-async function putReceipt(blob){
-  if(!DEK) throw new Error('locked'); const id='r_'+newId(); const iv=crypto.getRandomValues(new Uint8Array(12));
-  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},DEK,await blob.arrayBuffer()); await rcSet(id,{iv,ct,type:blob.type||'image/jpeg'}); return id;
 }
 async function receiptURL(id){ const r=await rcGet(id); if(!r||!DEK) return null; const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:r.iv},DEK,r.ct); return URL.createObjectURL(new Blob([pt],{type:r.type})); }
 async function cleanReceipts(){ try{ const used=new Set(allTx().map(t=>t.receipt).filter(Boolean)); for(const k of await rcKeys()) if(!used.has(k)) await rcDel(k); }catch(e){} }
@@ -2985,30 +3142,87 @@ setInterval(newDayCheck,60000);
 window.addEventListener('pagehide',()=>{ saveNow(); });
 setInterval(()=>{ if(DEK&&+secMeta.autoLock>0&&Date.now()-lastActive>secMeta.autoLock*60000&&!$('#dlg').open) lockNow(); },15000);
 
-/* ================= on-device receipt reading =================
-   Uses a bundled copy of Tesseract (in ./ocr). The photo is processed on the phone. */
-let ocrWorker=null,ocrProgress=null,scanBusy=false;
-function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('Missing '+src));document.head.appendChild(s)})}
-async function getOcr(){
-  if(ocrWorker) return ocrWorker;
-  if(!window.Tesseract) await loadScript('./ocr/tesseract.min.js');
-  const baseUrl=new URL('./',location.href).href;
-  ocrWorker=await Tesseract.createWorker('eng',1,{workerPath:baseUrl+'ocr/worker.min.js',corePath:baseUrl+'ocr/',langPath:baseUrl+'ocr/lang',workerBlobURL:false,cacheMethod:'none',logger:m=>ocrProgress&&ocrProgress(m)});
-  await ocrWorker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
-  return ocrWorker;
+/* ================= bills read by Claude =================
+   Take a photo of the bill in the Claude app with the request from billPrompt(), then paste
+   Claude's answer here. The structured lines ("ITEM: name | qty | total | category") are read
+   exactly; anything else falls back to reading it like a printed receipt. */
+function billPrompt(){
+  const cats=P().categories.expense.map(c=>c.name).join(', ');
+  return `Read the bill in this photo and reply with ONLY these lines, nothing else:
+SHOP: <shop or restaurant name>
+DATE: <YYYY-MM-DD>
+CURRENCY: <3-letter code, e.g. ${cur()}>
+ITEM: <item name> | <quantity> | <line total> | <category>
+(one ITEM line for every item on the bill; category is one of: ${cats})
+DISCOUNT: <amount, or 0>
+SERVICE: <service charge, or 0>
+VAT: <tax amount, or 0>
+TOTAL: <total paid>`;
 }
-async function prepImage(file){
-  const bmp=await createImageBitmap(file);
-  const maxSide=2200; let s=Math.min(1,maxSide/Math.max(bmp.width,bmp.height)); if(Math.max(bmp.width,bmp.height)<1000) s=2;
-  const cv=document.createElement('canvas'); cv.width=Math.round(bmp.width*s); cv.height=Math.round(bmp.height*s);
-  const cx=cv.getContext('2d'); cx.drawImage(bmp,0,0,cv.width,cv.height);
-  const store=await new Promise(r=>{ const c2=document.createElement('canvas'); const k=Math.min(1,1600/Math.max(cv.width,cv.height)); c2.width=Math.round(cv.width*k); c2.height=Math.round(cv.height*k); c2.getContext('2d').drawImage(cv,0,0,c2.width,c2.height); c2.toBlob(b=>r(b),'image/jpeg',.82); });
-  // greyscale + contrast stretch for reading
-  const im=cx.getImageData(0,0,cv.width,cv.height),px=im.data; let lo=255,hi=0; const g=new Uint8ClampedArray(px.length/4);
-  for(let i=0,j=0;i<px.length;i+=4,j++){const v=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2]; g[j]=v; if(v<lo)lo=v; if(v>hi)hi=v;}
-  const r=Math.max(1,hi-lo); for(let i=0,j=0;i<px.length;i+=4,j++){const v=Math.min(255,Math.max(0,(g[j]-lo)*255/r*1.15-10)); px[i]=px[i+1]=px[i+2]=v;}
-  cx.putImageData(im,0,0);
-  return {canvas:cv,store};
+function billBox(d){
+  if(!d._billOpen) return `<div class="billbox closed"><button class="btn small" data-act="billOpen">🧾 ${d.bill?'Update bill text':'Add bill text'}</button><span class="hint">${d.bill?'Bill text is saved with this expense.':'Paste a bill read by Claude — items, categories and VAT are filled in for you.'}</span></div>`;
+  return `<div class="billbox"><div class="bb-h"><b>🧾 Bill text</b><span class="spacer"></span><button class="icon-btn" data-act="billClose" aria-label="Close">×</button></div>
+    <ol class="bb-steps"><li><button class="linkbtn" data-act="billPrompt">Copy the request for Claude</button></li><li>In the Claude app, paste it with a photo of the bill</li><li>Copy Claude’s answer and paste it below</li></ol>
+    <textarea class="inp" rows="6" data-billtext dir="auto" placeholder="SHOP: Lulu&#10;ITEM: Milk 1L | 2 | 0.900 | Groceries&#10;VAT: 0.045&#10;TOTAL: 0.945">${esc(d._billText!=null?d._billText:d.bill||'')}</textarea>
+    <div class="bar" style="margin-top:8px"><button class="btn small" data-act="billPaste">Paste</button><span class="spacer"></span><button class="btn small primary" data-act="billRead">Read the bill</button></div>
+    ${d._billMsg?`<p class="hint bb-msg">${esc(d._billMsg)}</p>`:''}</div>`;
+}
+const billAmt=x=>{ const t=arDigits(String(x||'')).replace(/[^\d.,\-]/g,''); return Math.abs(num(/,\d{3}(\D|$)/.test(t)&&t.includes('.')?t.replace(/,/g,''):t.replace(/,(\d{1,2})$/,'.$1').replace(/,/g,''))); };
+function parseBillText(text){
+  const out={merchant:'',date:null,cur:null,lines:[],tax:0,service:0,discount:0,total:null,subtotal:null};
+  const field=(l,re)=>{ const m=l.match(new RegExp('^(?:'+re+')\\s*(?:\\([^)]*\\))?\\s*[:：=]\\s*(.+)$','i')); return m?m[1].trim():null; };
+  for(const raw of arDigits(text).split(/\r?\n/)){
+    let l=raw.replace(/\*\*|__|`/g,'').replace(/^\s*(?:[-•*]|\d+[.)])\s+/,'').trim(); if(!l) continue; let v;
+    if((v=field(l,'shop|store|merchant|restaurant|vendor|المتجر|المحل|المطعم'))!=null){ out.merchant=v.slice(0,60); continue; }
+    if((v=field(l,'date|التاريخ'))!=null){ out.date=(v.match(/\d{4}-\d{2}-\d{2}/)||[])[0]||dateIn(v); continue; }
+    if((v=field(l,'currency|العملة'))!=null){ out.cur=curCode(v)||(v.match(/[A-Z]{3}/i)||[''])[0].toUpperCase()||null; continue; }
+    if((v=field(l,'sub\\s*-?\\s*total|المجموع الفرعي'))!=null){ out.subtotal=billAmt(v); continue; }
+    if((v=field(l,'vat|tax|gst|ضريبة(?: القيمة المضافة)?|الضريبة'))!=null){ out.tax+=billAmt(v); continue; }
+    if((v=field(l,'service(?:\\s*charge)?|رسوم الخدمة|الخدمة'))!=null){ out.service+=billAmt(v); continue; }
+    if((v=field(l,'discount|خصم|الخصم'))!=null){ out.discount+=billAmt(v); continue; }
+    if((v=field(l,'(?:grand\\s*)?total|amount paid|الإجمالي|المجموع'))!=null){ out.total=billAmt(v); continue; }
+    l=l.replace(/^(?:item|صنف)\s*[:：]\s*/i,'');
+    if(!l.includes('|')) continue;
+    const c=l.replace(/^\|/,'').replace(/\|$/,'').split('|').map(x=>x.trim());
+    if(c.every(x=>!x||/^:?-{2,}:?$/.test(x))||/^(item|items|name|product|description|الصنف|الاسم)$/i.test(c[0])) continue; // a table's header or rule
+    let name=c[0], qty=1, total=0, catName='';
+    const isNum=x=>/^[\d.,\s]+(?:[a-z]{0,3}|[^\s\w]{0,3})$/i.test(x)||/^[^\d\s]{1,4}\s*[\d.,]+$/.test(x);
+    if(c.length>=4){ qty=num(c[1].replace(',','.'))||1; total=billAmt(c[2]); catName=c[3]; }
+    else if(c.length===3){ if(isNum(c[1])&&isNum(c[2])){ qty=num(c[1].replace(',','.'))||1; total=billAmt(c[2]); } else { total=billAmt(c[1]); catName=c[2]; } }
+    else if(c.length===2) total=billAmt(c[1]);
+    if(name&&total>0) out.lines.push({name,qty,price:total/qty,catName});
+  }
+  if(!out.lines.length){ const r=parseReceiptText(text); for(const k of ['merchant','date','total','subtotal']) if(out[k]) r[k]=out[k]; for(const k of ['tax','service','discount']) if(out[k]) r[k]=out[k]; r.cur=out.cur; return r; }
+  return out;
+}
+// "Groceries", "groceries › Dairy", "البقالة" → one of your categories (and maybe its type)
+function billCat(itemName,catName,fallback){
+  const cats=P().categories.expense, [cn,typeName]=String(catName||'').split(/\s*[>›\/]\s*/), n=norm(cn||'');
+  const ar=c=>norm((AR.dict||{})[c.name]||'');
+  let c=n?cats.find(x=>norm(x.name)===n||ar(x)===n)||cats.find(x=>{ const a=norm(x.name); return a.startsWith(n)||n.startsWith(a.split(' ')[0]); })||cats.find(x=>ar(x)&&(ar(x).includes(n)||n.includes(ar(x)))):null;
+  const g=guessCategory(itemName,'expense');
+  if(!c) c=findCat(g&&g.catId)||findCat(fallback)||cats[cats.length-1];
+  const item=typeName&&c.items.find(i=>norm(i)===norm(typeName))||(g&&g.catId===c.id?g.item||'':'')||typeName||'';
+  return {catId:c.id,item};
+}
+function readBill(d){
+  const text=String(d._billText!=null?d._billText:d.bill||'').trim(); if(!text){ d._billMsg='Paste the bill text first.'; renderTxDlg(); return; }
+  const r=parseBillText(text);
+  const fallback=d.catId||((r.merchant&&guessCategory(r.merchant,'expense'))||{}).catId||'other';
+  if(!r.lines.length){ d._billMsg='No items with prices found. Make sure each item line looks like: ITEM: name | quantity | total | category'; renderTxDlg(); return; }
+  // a bill in another currency: prices are converted, the original total is kept
+  let k=1; d._billFx=null;
+  if(r.cur&&r.cur!==cur()&&fxRate(r.cur)>0){ k=fxRate(r.cur); const lineSum=sum(r.lines,l=>l.price*l.qty); d._billFx={cur:r.cur,orig:r.total||round(lineSum+r.tax+r.service-r.discount,2)}; }
+  d.lines=r.lines.map(l=>{ const bc=billCat(l.name,l.catName,fallback); return {name:l.name.slice(0,60),qty:String(+(+l.qty).toFixed(3)),price:String(round(l.price*k,dec()+1)),catId:bc.catId,item:bc.item,who:[]}; });
+  d.type='expense'; d.itemized=true; d.fx.on=false;
+  d.taxMode='amt'; d.tax=r.tax?String(round(r.tax*k,dec())):''; d.serviceMode='amt'; d.service=r.service?String(round(r.service*k,dec())):''; d.discount=r.discount?String(round(r.discount*k,dec())):'';
+  if(r.merchant&&!d.note.trim()) d.note=r.merchant;
+  if(r.date&&r.date<=todayStr()&&!d.id) d.date=r.date;
+  d._scanTotal=r.total?r.total*k:null; d.bill=text; d._billText=null; d._billOpen=false; d.manual=true;
+  const byC={}; for(const l of d.lines) byC[l.catId]=(byC[l.catId]||0)+lineTotal(l); d.catId=Object.entries(byC).sort((a,b)=>b[1]-a[1])[0][0];
+  const nc=Object.keys(byC).length;
+  d._billMsg=''; renderTxDlg();
+  toast(`Read ${d.lines.length} item${d.lines.length>1?'s':''}${nc>1?` in ${nc} categories`:''}${r.tax?' with VAT':''}${d._billFx?` · converted from ${d._billFx.cur}`:''} — check and save`);
 }
 const PRICE_RE=/(-?\d{1,5}[.,]\d{2,3})\s*(?:[A-Z]{1,3}|[*#])?\s*$/;
 function parseReceiptText(text){
@@ -3041,32 +3255,6 @@ function parseReceiptText(text){
     out.lines.push({name:label.charAt(0).toUpperCase()+label.slice(1).toLowerCase(),qty,price});
   }
   return out;
-}
-async function scanReceipt(file){
-  if(!file||!draft||scanBusy) return; const d=draft; scanBusy=true;
-  d._scanMsg='Preparing the photo…'; renderTxDlg();
-  try{
-    const {canvas,store}=await prepImage(file);
-    d._blob=store; if(d._blobUrl) URL.revokeObjectURL(d._blobUrl); d._blobUrl=URL.createObjectURL(store);
-    const setMsg=m=>{ d._scanMsg=m; const e=$('#scanMsg'); if(e&&draft===d) e.textContent=m; };
-    setMsg(ocrWorker?'Reading the receipt…':'Starting the reader (first time takes a few seconds)…');
-    ocrProgress=m=>{ if(m.status==='recognizing text') setMsg(`Reading… ${Math.round(m.progress*100)}%`); };
-    const w=await getOcr(); const res=await w.recognize(canvas);
-    if(draft!==d) return;
-    const r=parseReceiptText(res.data.text||'');
-    const fallbackCat=(d.catId)||((r.merchant&&guessCategory(r.merchant,'expense'))||{}).catId||'food';
-    const lines=r.lines.map(l=>{const g=guessCategory(l.name,'expense')||{}; return {name:l.name.slice(0,60),qty:String(+l.qty.toFixed(3)),price:String(round(l.price,dec()+1)),catId:g.catId||fallbackCat,item:g.item||'',who:[]};});
-    if(!lines.length){ d._scanMsg='No priced lines found. Try a flat, well-lit photo filling the screen — or type the items.'; d.itemized=true; if(!d.lines.length) d.lines=[blankLine(fallbackCat)]; return; }
-    d.type='expense'; d.itemized=true; d.fx.on=false; d.lines=d.lines.filter(l=>lineTotal(l)>0).concat(lines);
-    const sub=sum(lines,lineTotal);
-    d.taxMode='amt'; d.tax=r.tax?String(r.tax):''; d.serviceMode='amt'; d.service=r.service?String(r.service):''; d.discount=r.discount?String(r.discount):'';
-    if(r.merchant&&!d.note) d.note=r.merchant.slice(0,60);
-    if(r.date&&r.date<=todayStr()) d.date=r.date;
-    d._scanTotal=r.total||null; d.catId=d.catId||lines[0].catId; d.manual=true;
-    const checkSub=r.subtotal&&Math.abs(r.subtotal-sub)>10**-dec()*5;
-    d._scanMsg=`Found ${lines.length} item${lines.length>1?'s':''}${r.merchant?' at '+r.merchant:''}. Please check the numbers${checkSub?` — the receipt’s subtotal is ${money(r.subtotal)}, items add up to ${money(sub)}`:''}.`;
-  }catch(e){ d._scanMsg='Couldn\u2019t read that photo. Try again, or type the items.'; }
-  finally{ scanBusy=false; ocrProgress=null; if(draft===d) renderTxDlg(); }
 }
 
 /* ---------- start ---------- */

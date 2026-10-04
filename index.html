@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' blob: data: https://open.er-api.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' blob: data: https://open.er-api.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -33,7 +33,6 @@
 <div class="toast" id="toast" role="status"></div>
 <div id="done" hidden></div>
 <div id="story" hidden></div>
-<input type="file" id="receiptFile" accept="image/*" hidden>
 <input type="file" id="smsFile" accept=".txt,text/plain" hidden>
 <input type="file" id="backupFile" accept=".json,application/json,.masroof" hidden>
 <script src="./js/i18n.js"></script>
