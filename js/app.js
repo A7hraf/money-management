@@ -11,7 +11,7 @@ const newId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).sl
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 // the version shown in Settings › About; version.json on the site holds the newest one
-const APP_VERSION='3.5';
+const APP_VERSION='3.6';
 // language: English or Arabic (the Arabic words live in js/i18n.js). Day/month names switch in place.
 let LANG='en';
 const MONTHS_EN=MONTHS.slice(), MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -845,7 +845,7 @@ function viewWealth(){
   <section class="panel"><div class="panel-h"><h2>Your wallet</h2><button class="btn small" data-act="add" data-preset="transfer">Move money</button></div>
     <div class="wallet stack">${P().accounts.map(x=>`<button class="wcard" style="background:${accGrad(accColor(x))};color:${accInk(accColor(x))}" data-act="accView" data-v="${esc(x.id)}"><span class="wtop"><span class="wid"><span class="ty">${esc(x.bank||TYPE_LABEL[x.type]||x.type)}</span><span class="nm">${esc(x.name)}</span></span><span class="bal">${money(b[x.id]||0)}</span></span><span class="chip-g"></span>${x.bankBal&&Math.abs(round(x.bankBal.v-(b[x.id]||0)+sum(allTx().filter(t=>t.date>x.bankBal.date),t=>acctEffect(t,x.id)),dec()))>=10**-dec()?'<span class="wwarn" title="Different from your bank">!</span>':''}<span class="wfoot"><span class="aroles">${roleChips(x)}</span><span class="wnum">${acctNums(x).length?'•••• '+esc(acctNums(x)[0]):esc(TYPE_LABEL[x.type]||'')}</span></span></button>`).join('')}
       <button class="wcard add" data-act="acctBulk">+ Add accounts</button></div>
-    <p class="hint" style="margin-top:10px">For a credit card, enter what you owe as a negative opening balance. Paying the card is a transfer from your bank to the card.</p></section>
+    <p class="hint" style="margin-top:10px">Tap a card to set its current balance — for a credit card, what you owe. Paying the card is a transfer from your bank to the card.</p></section>
   <section class="panel"><div class="panel-h"><h2>Investments</h2><button class="btn small primary" data-act="newHolding">Add investment</button></div>
     ${hs.length?`<div class="nw-parts" style="margin-bottom:12px"><span>Value <b>${money(invV)}</b></span><span>Put in <b>${money(invC)}</b></span><span>Gain <b class="amt ${invV-invC>=0?'pos':'neg'}">${money(invV-invC,{sign:true})} ${invC>0?`(${((invV-invC)/invC*100).toFixed(1)}%)`:''}</b></span></div>
       ${invV>0?`<div class="strip" style="height:14px;margin:4px 0 12px">${Object.entries(byType).filter(([,v])=>v>0).map(([t,v])=>`<button style="flex:${v} 1 0;background:${INV_COLORS[t]}" title="${INV_TYPES[t]}: ${money(v)}" aria-label="${INV_TYPES[t]}"></button>`).join('')}</div>
@@ -885,6 +885,8 @@ function quickSettingsHTML(){
 function openWhatsNew(){
   const row=(ic,t,d,act,btn)=>`<div class="wn"><span class="wn-i">${ic}</span><div><b>${t}</b><p>${d}</p>${act?`<button class="btn small primary" data-act="${act}">${btn}</button>`:''}</div></div>`;
   dlg('What’s new in Masroof',`<p class="hint" style="margin-top:0">Version <span data-notr>${APP_VERSION}</span>. Everything is also in Settings.</p>
+    ${row('✉️','Bank SMS, read properly','Messages without “OMR”, “Dr/Cr” and Arabic wording are understood. The account comes from its number, the bank or the balance; money in or out is checked against the balance; and Masroof remembers what you choose.','smsGuide','Update the automation')}
+    ${row('⚖️','Current balance, not opening balance','Give each account the balance your bank shows today. The balance in each bank message keeps it exact from then on.','acctBulk','Set balances')}
     ${row('🧾','Bills read by Claude','Photograph a bill in the Claude app, paste its answer here — every item, its category, VAT and discount are filled in. Add it later to any expense too.','billNew','Add a bill')}
     ${row('🔍','Tap any activity','See it in full: a bill split by category, each item with its cost, VAT and the total. Edit anything, any time.','','')}
     ${row('💳','Accounts & cards','See all your cards, edit any of them, and add new ones — your existing cards are never touched.','acctBulk','Open')}
@@ -892,7 +894,6 @@ function openWhatsNew(){
     ${row('💱','Any currency, converted',`Pay in dirhams, lira or dollars — from a bank SMS, quick add (“coffee 15 aed”) or the form — and Masroof converts it to ${esc(cur())}, shows the country’s flag and puts it on the map.`,P().fxAuto?'fxOpen':'fxLive',P().fxAuto?'Exchange rates':'Use live rates')}
     ${row('🌍','Your spending world','A real 3D Earth with city lights: glowing bars where you spent, arcs from home, and a month-by-month replay. Night or day view.','openMap','Open the map')}
     ${row(FACE_ICON,'Face ID unlock','Open Masroof with your face. Your passcode still works.',bioCapable&&!hasBio?'bioToggle':'',bioCapable&&!hasBio?'Turn on Face ID':'')}
-    ${row('✉️','Bank SMS, automatically','Your iPhone saves each bank SMS; Masroof adds them in one tap, on the right account.','smsGuide','Set up bank SMS')}
     ${row('🔔','Reminders in Calendar','Bills, credit card and loan due dates as alerts, even when Masroof is closed.','reminders','Add reminders')}
     ${row('📄','Monthly PDF report','A tidy report of any month to save or share.','export','Make a report')}
     ${row('💳','Credit cards','Statement, amount due, minimum payment and available credit. Add the details in Accounts & cards.','','')}
@@ -920,6 +921,7 @@ function smsSettingsHTML(){
   return `<div class="sms-status ${S.setup?'on':''}"><span class="dotl"></span><span><b>${S.setup?'Automatic saving is set up':'Not set up yet'}</b><br><span class="muted">${S.setup?`Last import ${ago(S.last)} · ${S.count||0} added from SMS so far`:'Your iPhone can save every bank SMS for Masroof in the background — takes 2 minutes.'}</span></span></div>
     <div class="bar" style="margin:12px 0 4px"><button class="btn primary" data-act="smsFile">${ICON.inbox} Import bank SMS</button><button class="btn" data-act="smsGuide">${S.setup?'Setup steps':'Set it up'}</button></div>
     <label class="toggle-row"><span>Add without asking<br><span class="muted" style="font-size:13px">Messages from a card Masroof knows go straight in. Anything unclear waits for you.</span></span><input type="checkbox" class="tick" data-act="smsAuto"${S.auto?' checked':''}></label>
+    <label class="toggle-row"><span>Keep balances matching the bank<br><span class="muted" style="font-size:13px">When a message shows the balance, the account’s current balance is set to it.</span></span><input type="checkbox" class="tick" data-act="smsSyncBal"${S.syncBal!==false?' checked':''}></label>
     <div class="toggle-row" style="display:block"><span>Card &amp; account numbers Masroof matches</span>
       ${linked.length?`<div class="rows">${linked.map(a=>`<button class="rw" data-act="editAcct" data-v="${esc(a.id)}"><span><i class="dot" style="background:${accColor(a)}"></i> ${esc(a.name)}</span><span class="muted">${acctNums(a).map(n=>'•••• '+esc(n)).join(', ')}</span></button>`).join('')}</div>`:'<p class="hint">Add the last 4 digits to each account below so messages land in the right place.</p>'}</div>`;
 }
@@ -1027,10 +1029,10 @@ function openSmsGuide(){
     <ol class="steps">
       ${step(1,'Start an automation','Open <b>Shortcuts</b> → <b>Automation</b> tab → <b>＋</b> → <b>Message</b>.')}
       ${step(2,'Only bank messages',`Set <b>Message Contains</b> to ${code('OMR')} and leave Sender as anyone. Choose <b>Run Immediately</b>, turn off <b>Notify When Run</b>, tap <b>Next</b> → <b>New Blank Automation</b>.`)}
-      ${step(3,'Add a “Text” action',`Search actions for <b>Text</b>. Inside it type ${code('=====')} then a new line, then tap <b>Current Date</b> in the bar above the keyboard — tap it again and set <b>Date Format</b> to <b>ISO 8601</b>. New line, then tap <b>Shortcut Input</b>.`)}
+      ${step(3,'Add a “Text” action',`Search actions for <b>Text</b>. Inside it type ${code('=====')} then a new line, then tap <b>Current Date</b> in the bar above the keyboard — tap it again and set <b>Date Format</b> to <b>ISO 8601</b>. New line, tap <b>Shortcut Input</b>, then tap it again and choose <b>Sender</b>. New line, tap <b>Shortcut Input</b> once more (leave it as the message).`)}
       ${step(4,'Add “Append to Text File”',`Search for <b>Append to Text File</b>. Set the file path to ${code('Masroof/bank-sms.txt')} and turn on <b>Make New Line</b>. Tap <b>Done</b>.`)}
-      ${step(5,'Arabic messages?',`If your bank texts in Arabic, make a second automation the same way with <b>Message Contains</b> ${code('ر.ع')}.`)}
-      ${step(6,'Import any time','In Masroof tap <strong>Import bank SMS</strong> and pick <b>iCloud Drive › Shortcuts › Masroof › bank-sms.txt</b>. Always pick the same file — Masroof skips messages it already has, and puts each one on the right account using the card’s last 4 digits.')}
+      ${step(5,'Messages without “OMR”?',`Make another automation the same way for each other word your banks use: ${code('ر.ع')} for Arabic messages, and ${code('R.O')} or ${code('A/C')} if a bank writes those instead. Masroof ignores anything that isn’t a transaction.`)}
+      ${step(6,'Import any time','In Masroof tap <strong>Import bank SMS</strong> and pick <b>iCloud Drive › Shortcuts › Masroof › bank-sms.txt</b>. Always pick the same file — Masroof skips messages it already has. It finds the account from the card or account number, the bank’s name or the balance in the message, and remembers any account you pick for a message it couldn’t place.')}
     </ol>
     <p class="hint">Can’t find “Append to Text File”? Use <b data-notr>Append to Note</b> instead, then copy the note and paste it into Import.</p>`,
     `<button class="btn" data-act="smsFile">Import now</button><span class="spacer"></span><button class="btn primary" data-act="smsDone">I’ve set it up</button>`);
@@ -1472,7 +1474,7 @@ async function saveDraft(){
   const touched=new Set(); let old=null;
   if(d.id) for(const [k,arr] of Object.entries(state.months)){const i=arr.findIndex(t=>t.id===d.id); if(i>=0){old=arr.splice(i,1)[0];touched.add(k);}}
   // an edit keeps what the form doesn't show: the bank SMS, where it was, the goal it belongs to
-  if(old) for(const f of ['sms','smsKey','loc','ctry','goalId']) if(old[f]!=null&&tx[f]==null) tx[f]=old[f];
+  if(old) for(const f of ['sms','smsKey','loc','ctry','goalId','at']) if(old[f]!=null&&tx[f]==null) tx[f]=old[f];
   // an itemized bill paid in another currency keeps the original amount
   const bfx=tx.lines&&(d._billFx||(old&&old.fx)); if(bfx&&!tx.fx&&bfx.orig>0) tx.fx={cur:bfx.cur,orig:bfx.orig,rate:fxRound(tx.amount/bfx.orig)};
   const k=d.date.slice(0,7); (state.months[k]||(state.months[k]=[])).push(tx); touched.add(k);
@@ -1625,13 +1627,14 @@ function addHolding(name,type){ name=(name||'').trim(); if(!name) return null; c
    a short fingerprint, so the same file can be imported again and again without duplicates. */
 let imp={text:'',rows:[],busy:false,ctl:null,msg:'',src:''};
 function openImport(){imp={text:'',rows:[],busy:false,ctl:null,msg:'',src:''};renderImport();if(!$('#dlg').open)$('#dlg').showModal()}
+const SMS_HOW={balance:'account found by its balance',learned:'account you chose before',bank:'account from the bank’s name',kind:'your only card of this kind',you:'account you picked'};
 function renderImport(){
   const catOpts=(type,sel)=>P().categories[type==='income'?'income':'expense'].map(c=>`<option value="${esc(c.id)}"${c.id===sel?' selected':''}>${esc(c.name)}</option>`).join('');
   const on=imp.rows.filter(r=>r.on).length, dups=imp.rows.filter(r=>r.dup).length;
   const rowHTML=(r,i)=>{ const sign=r.type==='income'||r.refund?'+':r.type==='transfer'?'':'−';
     const cls=r.type==='transfer'?'transfer':r.type==='income'||r.refund?'income':'expense';
     return `<div class="rv${r.on?'':' off'}"><input type="checkbox" data-imp="on" data-i="${i}"${r.on?' checked':''} aria-label="Include">
-      <span><b>${esc(r.merchant||'Transaction')}</b>${r.dup?' <span class="pill">already recorded?</span>':''}${r.refund?' <span class="pill">refund</span>':''}<br><span class="muted" style="font-size:13px">${fmtD(r.date,{day:'numeric',month:'short',year:'numeric'})}${r.nums.length?` · •••• ${esc(r.nums[0])}`:''}${!r.acctSure?' · <b style="color:var(--warn)">which account?</b>':''}</span></span>
+      <span><b>${esc(r.merchant||'Transaction')}</b>${r.dup?' <span class="pill">already recorded?</span>':''}${r.refund?' <span class="pill">refund</span>':''}<br><span class="muted" style="font-size:13px">${fmtD(r.date,{day:'numeric',month:'short',year:'numeric'})}${r.nums.length?` · <span data-notr>•••• ${esc(r.nums[0])}</span>`:''}${!r.acctSure?' · <b style="color:var(--warn)">which account?</b>':r.how&&SMS_HOW[r.how]?` · <span>${SMS_HOW[r.how]}</span>`:''}${r.bal!=null?` · <span>balance after</span> <span data-notr>${money(r.bal)}</span>`:''}${r.unsure?' · <b style="color:var(--warn)">money in or out?</b>':''}</span></span>
       <b class="amt ${cls}">${sign}${money(r.amount)}</b>
       ${r.text?`<p class="smsq" dir="auto">${esc(r.text)}</p>`:''}
       ${r.fx?`<div class="sub fxrow"><span class="hint">${fxLine(r.fx,r.ctry)} <span>${r.fxEst?`Converted at today’s rate. Change it if your bank charged a different amount:`:`What it cost in ${esc(cur())}:`}</span></span><input class="inp" inputmode="decimal" data-imp="amount" data-i="${i}" value="${esc(String(r.amount))}" style="width:110px"></div>`:''}
@@ -1661,78 +1664,141 @@ function dateIn(s){
   return null;
 }
 // split into single messages: "=====" lines (the Shortcuts file), timestamps, blank lines, or one per line
+const isSenderLine=l=>l.length<=28&&!/\d[.,]\d{2}/.test(l)&&l.split(/\s+/).length<=3&&!RE_OUT.test(l)&&!RE_IN.test(l)&&(/^\+?[\d\s\-]{5,}$/.test(l)||/^[\p{L}][\p{L}\p{N} &'._\-]*$/u.test(l));
 function smsChunks(text){
   const t=arDigits(text).replace(/\r\n?/g,'\n'); const SEP=/^[ \t]*(?:={3,}|-{3,}|—+-*|_{3,}|#{3,})[ \t]*$/m;
   const parts=SEP.test(t)?t.split(new RegExp(SEP.source,'gm')):(t.match(/^\s*\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/gm)||[]).length>1?t.split(/\n(?=\s*\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/)
     :/\n\s*\n/.test(t)?t.split(/\n\s*\n/):t.split('\n');
-  return parts.map(p=>{ const lines=p.split('\n').map(x=>x.trim()).filter(Boolean); let stamp=null;
-    if(lines.length>1&&lines[0].length<48&&!/\d[.,]\d{2,3}\b.*|OMR|ر\.?\s?ع/i.test(lines[0].replace(/\b\d{1,2}[.:]\d{2}\b/g,''))){ const d=dateIn(lines[0]); if(d){ stamp=d; lines.shift(); } }
-    return {stamp,body:lines.join(' ').replace(/\s+/g,' ').trim()}; }).filter(c=>c.body);
+  return parts.map(p=>{ const lines=p.split('\n').map(x=>x.trim()).filter(Boolean); let stamp=null, at=null, sender='';
+    if(lines.length>1&&lines[0].length<48&&!/\d[.,]\d{2,3}\b.*|OMR|ر\.?\s?ع/i.test(lines[0].replace(/\b\d{1,2}[.:]\d{2}\b/g,''))){ const d=dateIn(lines[0]); if(d){ stamp=d; const ms=Date.parse(lines[0]); if(!isNaN(ms)) at=ms; lines.shift(); } }
+    // the automation can also write who sent it ("BankMuscat", "NBO") on its own line
+    if(stamp&&lines.length>1&&isSenderLine(lines[0])) sender=lines.shift();
+    return {stamp,at,sender,body:lines.join(' ').replace(/\s+/g,' ').trim()}; }).filter(c=>c.body);
 }
-function smsAmounts(s){ // every "currency amount" with whether it is a balance
-  const re=new RegExp(`(${CUR_RE})\\s*([\\d,]+(?:\\.\\d+)?)|([\\d,]+(?:\\.\\d+)?)\\s*(${CUR_RE})(?![\\p{L}])`,'giu'); const out=[]; let m;
+/* --- reading one message ---
+   Amounts: "OMR 12.500", "12.500 RO", "R.O. 12.5", "١٢٫٥٠٠ ر.ع", or a bare "12.500" when the
+   bank leaves the currency out. The balance the bank reports ("Avl Bal 1,234.567") is kept apart
+   from the transaction amount; for a credit card "available" means available credit. */
+const RE_BALKEY=/(?:bal(?:ance)?|avl|avail(?:able)?|ledger|limit|credit available|outstanding|o\/s|الرصيد|رصيد|المتاح|الحد|المستحق)[^\d\-]{0,26}$/i;
+function balKind(before){ const b=before.toLowerCase();
+  if(/limit|credit available|available credit|الحد/.test(b)) return 'lim';
+  if(/outstanding|o\/s|المستحق/.test(b)) return 'owed';
+  if(/avl|avail|المتاح/.test(b)&&!/bal|رصيد/.test(b)) return 'lim';
+  return /avl|avail|المتاح/.test(b)?'avl':'bal'; }
+function smsAmounts(s){
+  const re=new RegExp(`(${CUR_RE})\\s*(-?\\s?[\\d,]+(?:\\.\\d+)?)|(-?[\\d,]+(?:\\.\\d+)?)\\s*(${CUR_RE})(?![\\p{L}])`,'giu'); const out=[]; let m;
   while((m=re.exec(s))){ const c=(m[1]||m[4]); if(m[1]&&/\p{L}/u.test(s[m.index-1]||'')&&/^\p{L}/u.test(c)) continue;
-    const v=num(m[2]||m[3]); if(!(v>0)) continue;
-    const before=s.slice(Math.max(0,m.index-32),m.index);
-    out.push({cur:c.replace(/\s+/g,''),v,bal:/(?:bal|balance|avl|avail|available|limit|الرصيد|رصيد|المتاح|الحد)[^\d]{0,26}$/i.test(before)}); }
-  return out;
+    const raw=String(m[2]||m[3]).replace(/\s/g,''); const v=Math.abs(num(raw)); if(!(v>0)) continue;
+    const before=s.slice(Math.max(0,m.index-34),m.index), after=s.slice(m.index+m[0].length,m.index+m[0].length+6);
+    const bal=RE_BALKEY.test(before); const neg=raw.startsWith('-')||/^\s*(?:dr\b|مدين)/i.test(after);
+    out.push({cur:c.replace(/\s+/g,''),v,bal,kind:bal?balKind(before):'',neg,cr:/^\s*(?:cr\b|دائن)/i.test(after),idx:m.index}); }
+  if(out.some(a=>!a.bal)) return out;
+  // no currency written next to the amount: take plain decimals ("debited by 12.500"), never dates or times
+  const re2=/(?<![\d.,\/:\-])(-?)(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2,3})(?![\d]|[.\/:\-]\d)/g;
+  while((m=re2.exec(s))){ const before=s.slice(Math.max(0,m.index-34),m.index); if(/(?:x{2,}|\*{2,}|card|a\/c|acc(?:oun)?t|ref|no\.?)\s*[:#]?\s*$/i.test(before)) continue;
+    const v=num(m[2].replace(/,/g,'')+'.'+m[3]); if(!(v>0)||out.some(a=>Math.abs(a.idx-m.index)<3)) continue; const bal=RE_BALKEY.test(before);
+    const after=s.slice(m.index+m[0].length,m.index+m[0].length+6);
+    out.push({cur:cur(),v,bal,kind:bal?balKind(before):'',neg:!!m[1]||/^\s*(?:dr\b|مدين)/i.test(after),cr:/^\s*(?:cr\b|دائن)/i.test(after),idx:m.index,bare:true}); }
+  return out.sort((a,b)=>a.idx-b.idx);
 }
-function smsNums(s){ // card / account numbers mentioned (last 4 digits)
-  const re=/(?:x{2,}|\*{2,}|•{2,}|\.{2,}|ending(?:\s+(?:with|in))?|ends\s+(?:with|in)|a\/c|acc(?:oun)?t|card|رقم|المنتهي(?:ة)?(?:\s*بـ?)?)\s*(?:no\.?|number|#)?\s*[:#.\-]?\s*([\dXx*•]{3,24})/gi;
-  const out=[]; let m; while((m=re.exec(s))){ const d=(m[1].match(/(\d{3,4})$/)||[])[1]; if(d&&!out.includes(d)) out.push(d); } return out;
+function smsNums(s){ // card / account numbers mentioned (their last 4 digits), even written "4xxx xxxx xxxx 1234" or "0312-123456-001"
+  const re=/(?:x{2,}|\*{2,}|•{2,}|\.{2,}|ending(?:\s+(?:with|in))?|ends\s+(?:with|in)|a\/c|acc(?:oun)?t|card|رقم|حسابك|حساب|بطاقتك|بطاقة|المنتهي(?:ة)?(?:\s*بـ?)?)\s*(?:no\.?|number|num|#)?\s*[:#.\-]?\s*((?:[\dXx*•]{2,6}[\s\-]){0,4}[\dXx*•]{3,19})/gi;
+  const out=[]; let m; while((m=re.exec(s))){ const t=m[1].replace(/[\s\-]/g,''); const d=(t.match(/(\d{3,4})$/)||[])[1]; if(d&&!out.includes(d)) out.push(d); } return out;
 }
 const acctNums=a=>[a.last4,...(a.smsIds||[])].filter(Boolean).map(String);
 const numMatch=(n,x)=>n===x||(n.length===3&&x.endsWith(n))||(x.length===3&&n.endsWith(x));
 function acctForNum(n){ return P().accounts.find(a=>acctNums(a).some(x=>numMatch(n,x))); }
-const BANK_ALIASES={'Bank Muscat':['bank muscat','bankmuscat','بنك مسقط'],'Sohar International':['sohar','صحار'],'Bank Dhofar':['dhofar','ظفار'],'National Bank of Oman':['nbo','national bank of oman','البنك الوطني'],
-  'Oman Arab Bank':['oab','oman arab bank','البنك العربي'],'HSBC Oman':['hsbc'],'Ahli Bank':['ahli','البنك الأهلي','الاهلي'],'Bank Nizwa':['nizwa','نزوى'],'Alizz Islamic Bank':['alizz','العز'],'Oman Housing Bank':['housing bank','الإسكان','الاسكان']};
-function acctsForBankText(s){ const n=norm(s); const banks=Object.entries(BANK_ALIASES).filter(([,al])=>al.some(x=>new RegExp('(^|[^a-z])'+x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^a-z]|$)','i').test(n))).map(([b])=>b);
-  return P().accounts.filter(a=>banks.some(b=>norm(a.bank)===norm(b))); }
-const RE_SKIP=/\botp\b|one.?time|password|passcode|verification|declined|unsuccessful|\bfailed\b|insufficient|will be (?:debited|charged)|minimum (?:amount )?due|payment due|رمز|كلمة (?:المرور|السر)|مرفوض|فشل|لم تتم/i;
-const RE_OUT=/debit(?:ed)?\b|purchase|\bspent\b|\bused\b|\bpaid\b|payment|withdraw|\bpos\b|\batm\b|charged|\bsent\b|transferred from|خصم|شراء|سحب|دفع|مدين|سداد|صادر/i;
-const RE_IN=/credit(?:ed)?\b(?!\s*card)|received|deposit|salary|incoming|cash\s*back|transferred to your|إيداع|ايداع|أودع|اودع|استلام|راتب|إضافة|اضافة|دائن|وارد/i;
+// the bank: from the sender name the Shortcuts automation writes ("BankMuscat", "NBO", "SoharIntl") or from the message
+const BANK_ALIASES={'Bank Muscat':['bank muscat','bankmuscat','bmuscat','بنك مسقط'],'Sohar International':['sohar','soharintl','صحار'],'Bank Dhofar':['dhofar','bankdhofar','ظفار'],'National Bank of Oman':['nbo','national bank of oman','البنك الوطني'],
+  'Oman Arab Bank':['oab','oman arab bank','omanarabbank','البنك العربي'],'HSBC Oman':['hsbc'],'Ahli Bank':['ahli','ahlibank','البنك الأهلي','الاهلي'],'Bank Nizwa':['nizwa','banknizwa','نزوى'],'Alizz Islamic Bank':['alizz','العز'],'Oman Housing Bank':['housing bank','ohb','الإسكان','الاسكان']};
+function banksIn(text,sender){ const n=norm(text), sn=norm(sender||'').replace(/[^a-z؀-ۿ]/g,'');
+  return Object.entries(BANK_ALIASES).filter(([,al])=>al.some(x=>(sn&&x.length>2&&sn.includes(x.replace(/\s/g,'')))||new RegExp('(^|[^a-z])'+x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^a-z]|$)','i').test(n))).map(([b])=>b); }
+function acctsForBankText(s,sender){ const banks=banksIn(s,sender); return P().accounts.filter(a=>banks.some(b=>norm(a.bank)===norm(b))); }
+const RE_SKIP=/\botp\b|one.?time|password|passcode|verification|declined|unsuccessful|\bfailed\b|insufficient|will be (?:debited|charged)|minimum (?:amount )?due|payment due|due date|رمز|كلمة (?:المرور|السر)|مرفوض|فشل|لم تتم/i;
+const RE_PROMO=/\b(?:offers?|apply now|eligible|win|chance to|promo(?:tion)?|t&c|terms (?:and conditions )?apply|valid (?:till|until))\b|عرض خاص|اربح/i;
+const RE_IN_FIRST=/payment[^.]{0,40}received|received[^.]{0,30}payment|thank you for (?:your )?payment|تم استلام (?:ال)?دفع/i; // a payment INTO a credit card
+const RE_OUT=/\bdebit(?:ed)?\b|(?<!dear )\bdr\b\.?|withdr[ae]wn|withdrawal|deducted|purchase[ds]?|\bspent\b|\bused\b|\bpaid\b|payment|\bpos\b|e-?commerce|charged|\bsent\b|transferred (?:from|to (?!your))|transfer to|from your (?:a\/c|account|card)|خصم|شراء|سحب|دفع|مدين|سداد|صادر|تحويل إلى|حوالة صادرة/i;
+const RE_IN=/\bcredit(?:ed)?\b|\bcr\b\.?|deposit(?:ed)?|received|salary|incoming|cash\s*back|transferred to your|added to|to your (?:a\/c|account)|إيداع|ايداع|أودع|اودع|استلام|راتب|إضافة|اضافة|أضيف|اضيف|دائن|وارد/i;
 const RE_REFUND=/refund|reversal|reversed|مسترد|استرداد|عكس/i;
 const RE_ATM=/\batm\b|cash withdrawal|سحب نقدي|صراف/i;
+// what kind of message this is, without its numbers or shop: used to remember your answers
+const smsTpl=(s,merchant)=>norm(merchant?s.split(merchant).join(' @ '):s).replace(/\d[\d,.:\/\-]*/g,'#').replace(/[x*•]{2,}#?/gi,'#').replace(/\s+/g,' ').trim().slice(0,110);
 function smsMerchant(s){
   const bad=/^(?:your|you|the|a|an|my|our|account|a\/c|acc|card|ending|xx|\*|merchant|pos|atm)\b|حساب|بطاقة|رصيد/i;
   const tidy=x=>x.replace(new RegExp(`\\s*(?<![\\p{L}])(?:${CUR_RE})\\s*\\d[\\d,.]*.*$`,'iu'),'').replace(/\s+(?:on|dated|for|via|using|ref.*)$/i,'').replace(/[\s\-–:]+$/,'').trim();
-  for(const re of [/\b(?:at|@|merchant:?)\s+([A-Za-z0-9&'’.\-*\/ ]{2,40}?)(?=\s+(?:on|dated|for|with|using|via|ref|avl|avail|bal|card|a\/c|in|credited|debited|was|has|is|of|and)\b|[.,;:|()]|\s*$|\s+\d{1,2}[\/\-.])/i,
+  for(const re of [/\b(?:pos|e-?com(?:merce)?|purchase)\s+(?!at\b|of\b|for\b|txn\b|transaction\b)([A-Za-z][A-Za-z0-9&'’.\-*\/ ]{1,40}?)(?=\s+(?:on|dated|for|via|ref|avl|avail|bal|card|a\/c)\b|[.,;:|()]|\s*$|\s+\d{1,2}[\/\-.])/i,
+    /\b(?:at|@|merchant:?)\s+([A-Za-z0-9&'’.\-*\/ ]{2,40}?)(?=\s+(?:on|dated|for|with|using|via|ref|avl|avail|bal|card|a\/c|in|credited|debited|was|has|is|of|and)\b|[.,;:|()]|\s*$|\s+\d{1,2}[\/\-.])/i,
     /\b(?:to|from)\s+([A-Za-z0-9&'’.\-*\/ ]{2,40}?)(?=\s+(?:on|dated|for|with|using|via|ref|avl|avail|bal|card|a\/c|credited|debited|was|has|is|of|and)\b|[.,;:|()]|\s*$|\s+\d{1,2}[\/\-.])/i,
     /(?:لدى|عند|في محل|لصالح|من|إلى|الى)\s+([^.،,؛:\d()]{2,40}?)(?=\s+(?:بتاريخ|في\s|يوم|رصيد|الرصيد|بمبلغ)|[.،,؛()]|$)/]){
-    for(const m of s.matchAll(new RegExp(re.source,re.flags+'g'))){ const x=tidy(m[1]); if(x.length>1&&!bad.test(x)&&!/^\d/.test(x)) return x; } }
+    for(const m of s.matchAll(new RegExp(re.source,re.flags+'g'))){ const x=tidy(m[1]); if(x.length>1&&!bad.test(x)&&!/^\d/.test(x)&&!curCode(x)) return x; } }
   return '';
 }
-function parseSms(c){
+function parseSms(c,ctx){
+  ctx=ctx||{bal:balances(),pend:{},last:{}};
   const s=c.body; if(RE_SKIP.test(s)) return null;
   const amts=smsAmounts(s); const txA=amts.filter(a=>!a.bal); if(!txA.length) return null;
+  const nums=smsNums(s); const own=[...new Set(nums.map(acctForNum).filter(Boolean).map(a=>a.id))];
+  if(RE_PROMO.test(s)&&!own.length&&!nums.length) return null;
   // paid in another currency: use the amount in your currency if the bank gave it, else convert
   const local=txA.find(a=>isLocalCur(a.cur)); const foreign=txA.find(a=>!isLocalCur(a.cur)&&curCode(a.cur)); const main=local||foreign||txA[0];
   let fx=null, amount=main.v, fxEst=false;
   if(foreign){ const code=curCode(foreign.cur); fx={cur:code,orig:foreign.v};
     if(local) fx.rate=fxRound(local.v/foreign.v); else { fx.rate=fxRound(fxRate(code)); amount=fxConv(foreign.v,code); fxEst=true; } }
-  const balA=amts.find(a=>a.bal&&isLocalCur(a.cur));
-  const refund=RE_REFUND.test(s); const oi=s.search(RE_OUT), ii=s.search(RE_IN);
-  let type=refund?'expense':ii>=0&&(oi<0||ii<oi)?'income':'expense'; const known=refund||oi>=0||ii>=0;
+  amount=round(amount,dec());
+  const balA=amts.find(a=>a.bal&&(isLocalCur(a.cur)||a.bare));
+  // money out or in: the first telling word before the balance part; "credit card"/"debit card" say nothing
+  const balAt=balA?balA.idx:s.length; const head=s.slice(0,Math.max(balAt,Math.min(40,s.length))).replace(/credit\s*card|debit\s*card|credit\s*limit|available\s*credit|بطاقة\s*(?:ال)?(?:ائتمان|خصم)/gi,' card ');
+  const refund=RE_REFUND.test(s); const oi=head.search(RE_OUT), ii=head.search(RE_IN);
+  let type=RE_IN_FIRST.test(s)||refund?(refund?'expense':'income'):ii>=0&&(oi<0||ii<oi)?'income':'expense';
+  let known=refund||RE_IN_FIRST.test(s)||oi>=0||ii>=0;
+  if(!known&&main.neg){ type='expense'; known=true; }
   let date=dateIn(s); const t=todayStr(); if(!date||date>ymd(addDays(new Date(),1))) date=c.stamp||t;
-  const nums=smsNums(s); const own=[...new Set(nums.map(acctForNum).filter(Boolean).map(a=>a.id))];
-  let accountId=own[0]||null, toAccountId=null, acctSure=!!accountId;
-  if(own.length>1){ // money between two of your own accounts
-    type='transfer'; if(ii>=0&&(oi<0||ii<oi)){ accountId=own[1]; toAccountId=own[0]; } else { accountId=own[0]; toAccountId=own[1]; } }
-  if(!accountId){ const byBank=acctsForBankText(s); if(byBank.length===1){ accountId=byBank[0].id; acctSure=true; } else if(byBank.length>1){ accountId=(byBank.find(a=>hasRole(a,type==='income'?'salary':'spending'))||byBank[0]).id; } }
-  if(!accountId) accountId=guessAcctFromText(s)||(type==='income'?salaryAcct():defaultAcct());
   let merchant=smsMerchant(s), ctry=null;
-  // card SMS often end the shop's name with its country: "CARREFOUR DUBAI AE"
   { const cm=merchant.match(/^(.+?\s)([A-Z]{2})$/); if(cm&&FX_ISO[cm[2]]){ ctry=cm[2]; merchant=cm[1].trim(); } }
-  if(type!=='transfer'&&!refund&&RE_ATM.test(s)){ const cash=P().accounts.find(a=>a.type==='cash'&&a.id!==accountId); merchant=merchant&&!/atm/i.test(merchant)?'ATM · '+merchant:'ATM withdrawal'; if(cash){ type='transfer'; toAccountId=cash.id; } }
+  const tpl=smsTpl(s,merchant), L=(P().smsTpl||{})[tpl];
+  if(L&&L.t&&!refund) { type=L.t; known=true; }
+  // which account: its number, else the balance the bank reports, else what you told Masroof before, else the bank's name
+  let accountId=own[0]||null, toAccountId=null, how=accountId?'number':'';
+  if(own.length>1){ // money between two of your own accounts
+    type='transfer'; known=true; if(ii>=0&&(oi<0||ii<oi)){ accountId=own[1]; toAccountId=own[0]; } else { accountId=own[0]; toAccountId=own[1]; } }
+  const bankAccts=acctsForBankText(s,c.sender);
+  const isCard=/credit\s*card|بطاقة\s*(?:ال)?ائتمان/i.test(s), isBank=!isCard&&/debit\s*card|a\/c|account|acct|حساب|بطاقة\s*(?:ال)?خصم/i.test(s);
+  const fitsKind=a=>isCard?a.type==='card':isBank?a.type!=='card'&&a.type!=='cash':true;
+  const balVal=a=>{ if(!balA) return null; if(a.type==='card'){ if(balA.kind==='lim'||balA.kind==='avl') return a.limit?round(-(a.limit-balA.v),dec()):null; return balA.cr?balA.v:-balA.v; } if(balA.kind==='lim') return null; return balA.neg?-balA.v:balA.v; };
+  // does this account's balance fit? Either the bank's previous balance for it ± this amount, or (for
+  // messages newer than the balance you set) Masroof's balance ± this amount
+  const afterAnchor=a=>!a.anchor||(a.anchor.at&&c.at?c.at>a.anchor.at:date>a.anchor.date);
+  const prevBank=a=>{ if(ctx.last[a.id]!=null) return ctx.last[a.id]; const bb=a.bankBal; return bb&&bb.v!=null&&(bb.at&&c.at?bb.at<c.at:bb.date<date)?bb.v:null; };
+  const fitBal=(a,ty)=>{ const b=balVal(a); if(b==null) return false; const eff=ty==='income'||(ty==='expense'&&refund)?amount:-amount, tol=10**-dec()*1.5;
+    const pb=prevBank(a); if(pb!=null&&Math.abs(pb+eff-b)<tol) return true;
+    return afterAnchor(a)&&Math.abs((ctx.bal[a.id]||0)+(ctx.pend[a.id]||0)+eff-b)<tol; };
+  const unknownNum=nums.length>0&&!own.length; // a card number Masroof hasn't seen: don't guess with confidence
+  if(!accountId&&balA){ const pool=(bankAccts.length?bankAccts:P().accounts).filter(fitsKind);
+    for(const ty of known?[type]:['expense','income']){ const hits=pool.filter(a=>fitBal(a,ty)); if(hits.length===1){ accountId=hits[0].id; how='balance'; if(!known){ type=ty; known=true; } break; } } }
+  if(!accountId&&!unknownNum&&L&&L.a&&acct(L.a)){ accountId=L.a; how='learned'; }
+  if(!accountId&&bankAccts.length){ const k=bankAccts.filter(fitsKind), pick=k.length?k:bankAccts;
+    if(pick.length===1&&!unknownNum){ accountId=pick[0].id; how='bank'; } else { accountId=(pick.find(a=>hasRole(a,type==='income'?'salary':'spending'))||pick[0]).id; how='guess'; } }
+  if(!accountId&&!unknownNum&&(isCard||isBank)){ const k=P().accounts.filter(a=>isCard?a.type==='card':a.type==='bank'); if(k.length===1){ accountId=k[0].id; how='kind'; } }
+  if(!accountId){ const sp=P().accounts.find(a=>hasRole(a,type==='income'?'salary':'spending')&&a.type!=='card'&&a.type!=='cash')||P().accounts[0]; accountId=sp.id; how='guess'; }
+  // with the account known, the balance also settles money in or out
+  if(type!=='transfer'&&balA&&how!=='balance'){ const a=acct(accountId); if(a){ if(fitBal(a,'expense')&&!fitBal(a,'income')){ if(type!=='expense'||!refund){ type='expense'; } known=true; } else if(fitBal(a,'income')&&!refund){ type='income'; known=true; } } }
+  if(type!=='transfer'&&!refund&&RE_ATM.test(s)){ const cash=P().accounts.find(a=>a.type==='cash'&&a.id!==accountId); merchant=merchant&&!/atm/i.test(merchant)?'ATM · '+merchant:'ATM withdrawal'; if(cash&&type==='expense'){ type='transfer'; toAccountId=cash.id; } }
   if(type==='income'&&/salary|راتب/i.test(s)) merchant='Salary';
   if(!merchant) merchant=type==='transfer'?'Transfer':type==='income'?'Deposit':refund?'Refund':'Card payment';
   const g=type==='transfer'?null:(guessCategory(merchant,type)||guessCategory(s,type));
-  return {text:s.slice(0,300),on:known,date,type,amount:round(amount,dec()),merchant,catId:g?g.catId:(type==='income'?'inc_other':'other'),item:g&&g.item||'',accountId,toAccountId,acctSure,nums,fx,fxEst,estAmt:fxEst?round(amount,dec()):null,ctry,refund,bal:balA?balA.v:null,unsure:!known};
+  const acA=acct(accountId), bal=acA?balVal(acA):null;
+  // count this one so the next message's balance check starts from the right place
+  const eff=type==='income'||(type==='expense'&&refund)?amount:-amount;
+  const pend=(id,v)=>{ const a=acct(id); if(a&&afterAnchor(a)) ctx.pend[id]=(ctx.pend[id]||0)+v; };
+  if(type==='transfer'){ pend(accountId,-amount); if(toAccountId) pend(toAccountId,amount); } else pend(accountId,eff);
+  if(bal!=null) ctx.last[accountId]=bal;
+  return {text:s.slice(0,300),on:known,date,at:c.at||null,type,amount,merchant,catId:g?g.catId:(type==='income'?'inc_other':'other'),item:g&&g.item||'',accountId,toAccountId,acctSure:how!=='guess',how,tpl,
+    nums,fx,fxEst,estAmt:fxEst?amount:null,ctry,refund,bal,balKind:balA?balA.kind:null,unsure:!known};
 }
 function localParse(text){
-  const seen=new Set(P().smsSeen||[]); let skipped=0; const rows=[];
+  const seen=new Set(P().smsSeen||[]); let skipped=0; const rows=[]; const ctx={bal:balances(),pend:{},last:{}};
   for(const c of smsChunks(text)){ const key=fingerprint((c.stamp||'')+'|'+c.body); if(seen.has(key)){ skipped++; continue; } seen.add(key);
-    const r=parseSms(c); if(r){ r.key=key; rows.push(r); } else rows.push({key,skip:true}); }
+    const r=parseSms(c,ctx); if(r){ r.key=key; rows.push(r); } else rows.push({key,skip:true}); }
   const keys=rows.map(r=>r.key); const out=rows.filter(r=>!r.skip);
   // an expense from one of your accounts and income into another, same amount and day: one transfer
   for(const e of out) if(e.type==='expense'&&!e.refund&&e.acctSure&&!e.pairedWith) for(const i of out)
@@ -1758,24 +1824,30 @@ function readSmsFile(file){
 function rememberSeen(keys){ const P_=P(); const s=P_.smsSeen||(P_.smsSeen=[]); for(const k of keys||imp.keys||[]) if(k&&!s.includes(k)) s.push(k); if(s.length>5000) s.splice(0,s.length-5000); }
 function doImport(){ const rows=imp.rows.filter(r=>r.on); if(!rows.length) return; addImported(rows,true,true); }
 function addImported(rows,close,reviewed){
-  const touched=new Set(); const ids=[]; const p=P();
+  const touched=new Set(); const ids=[]; const p=P(); const synced=new Set();
   for(const r of rows){ const amount=round(num(r.amount),dec()); if(!(amount>0)) continue;
     const tx={id:newId(),type:r.type,amount,date:r.date,accountId:r.accountId,note:r.merchant,ts:Date.now(),imported:true,smsKey:r.key}; if(r.text) tx.sms=r.text;
     if(r.type==='transfer'){ if(!r.toAccountId||r.toAccountId===r.accountId) continue; tx.toAccountId=r.toAccountId; }
     else { tx.catId=r.catId; tx.item=r.item||''; if(r.refund&&r.type==='expense') tx.refund=true; }
     if(r.fx&&r.type!=='transfer'){ tx.fx={cur:r.fx.cur,orig:r.fx.orig,rate:fxRound(amount/r.fx.orig)}; if(r.fxEst&&amount===r.estAmt) tx.fx.est=true; }
-    if(r.ctry) tx.ctry=r.ctry;
-    ids.push(tx.id); const k=r.date.slice(0,7);(state.months[k]||(state.months[k]=[])).push(tx);touched.add(k);
+    if(r.ctry) tx.ctry=r.ctry; if(r.at) tx.at=r.at;
+    ids.push(tx.id);
+    // a message from before you set an account's current balance is already in that balance
+    for(const id of [tx.accountId,tx.toAccountId]){ const a=acct(id); if(a&&a.anchor&&(r.at&&a.anchor.at?r.at<=a.anchor.at:r.date<a.anchor.date)) a.opening=round((+a.opening||0)-acctEffect(tx,id),dec()); }
+    // remember how you answered for this kind of message
+    if(reviewed&&r.tpl&&r.type!=='transfer'){ const T=p.smsTpl||(p.smsTpl={}); T[r.tpl]={t:r.type,a:r.how==='number'?undefined:r.accountId}; const ks=Object.keys(T); if(ks.length>400) delete T[ks[0]]; } const k=r.date.slice(0,7);(state.months[k]||(state.months[k]=[])).push(tx);touched.add(k);
     if(tx.catId){ const c=findCat(r.catId); if(c&&r.item&&!c.items.includes(r.item)) c.items.push(r.item); learn(r.merchant,r.catId,r.item); }
     // a new card number: remember which account it belongs to
     if(r.nums&&r.nums.length&&!acctForNum(r.nums[0])){ const a=acct(r.accountId); if(a){ a.smsIds=[...new Set([...(a.smsIds||[]),r.nums[0]])]; } }
     // the balance the bank reported, to check Masroof against
-    const note=(id,v)=>{ const a=acct(id); if(a&&v!=null&&(!a.bankBal||a.bankBal.date<=r.date)) a.bankBal={v,date:r.date,ts:Date.now()}; };
+    const note=(id,v)=>{ const a=acct(id); if(a&&v!=null&&(!a.bankBal||a.bankBal.date<r.date||a.bankBal.date===r.date&&(!r.at||!a.bankBal.at||r.at>=a.bankBal.at))){ a.bankBal={v,date:r.date,at:r.at||null,ts:Date.now()}; synced.add(id); } };
     note(r.accountId,r.bal); if(r.toBal!=null) note(r.toAccountId,r.toBal);
   }
   rememberSeen(reviewed?imp.keys:[...rows.map(r=>r.key),...(imp.skipKeys||[])]); const S=p.sms||(p.sms={}); S.last=Date.now(); S.count=(S.count||0)+ids.length;
+  // the balance in the newest message is the truth: set each account's current balance to it
+  const fixed=S.syncBal===false?[]:[...synced].map(id=>acct(id)).filter(a=>a&&syncToBank(a)!==null);
   touched.forEach(persistMonth); persist('profile'); if(close) $('#dlg').close(); if(ids.length) celebrate();
-  toast(ids.length?`Imported ${ids.length} transaction${ids.length>1?'s':''} from your bank`:'Nothing to import',{undo:ids.length?()=>{removeIds(ids);render();}:null}); render();
+  toast(ids.length?`Imported ${ids.length} transaction${ids.length>1?'s':''} from your bank${fixed.length?` · balance${fixed.length>1?'s':''} updated from the bank`:''}`:'Nothing to import',{undo:ids.length?()=>{removeIds(ids);render();}:null}); render();
 }
 /* ================= spending map =================
    Where each expense happened: the exact spot when "Remember where I spend" is on (stored
@@ -2195,8 +2267,13 @@ function acctEffect(t,id){ let d=0; const f=(aid,v)=>{ if(aid===id) d+=v; };
   else if(t.type==='debt') f(t.accountId,t.dir==='give'?-t.amount:t.amount);
   else if(t.type==='invest') f(t.accountId,t.dir==='sell'?t.amount:-t.amount);
   return d; }
+// Masroof's balance for an account at the moment of the bank's last message
+function balAtBank(a){ const bb=a.bankBal; return (balances()[a.id]||0)-sum(allTx().filter(t=>t.date>bb.date||(t.date===bb.date&&t.at&&bb.at&&t.at>bb.at)),t=>acctEffect(t,a.id)); }
+// make an account's balance match the bank's last message; returns the change, or null if none was needed
+function syncToBank(a){ if(!a.bankBal||a.bankBal.v==null) return null; const diff=round(a.bankBal.v-balAtBank(a),dec());
+  a.anchor={date:a.bankBal.date,at:a.bankBal.at||null}; if(Math.abs(diff)<10**-dec()) return null; a.opening=round((+a.opening||0)+diff,dec()); return diff; }
 function bankCheckHTML(a,now){
-  if(!a.bankBal) return ''; const mine=now-sum(allTx().filter(t=>t.date>a.bankBal.date),t=>acctEffect(t,a.id)); // Masroof's balance on the bank's date
+  if(!a.bankBal) return ''; const mine=balAtBank(a); // Masroof's balance when the bank last reported it
   const diff=round(a.bankBal.v-mine,dec()); const ok=Math.abs(diff)<10**-dec();
   return `<div class="bankchk${ok?' ok':''}"><span class="bk-i">${ok?'✓':'!'}</span><span><b>${ok?'Matches your bank':'Your bank says '+money(a.bankBal.v)}</b><br><span class="muted">${ok?`Bank balance ${money(a.bankBal.v)} on ${shortD(a.bankBal.date)}`:`On ${shortD(a.bankBal.date)} · Masroof shows ${money(mine)} (${money(-diff,{sign:true})})`}</span></span>${ok?'':`<button class="btn small primary" data-act="bankFix" data-v="${esc(a.id)}">Match</button>`}</div>`;
 }
@@ -2258,7 +2335,7 @@ function saveBulk(){
     const label=(BULK_TYPES.find(x=>x[0]===r.type)||[,,'Account'])[2];
     const name=r.name.trim()||(r.bank?r.bank+(r.type==='card'?' card':r.type==='savings'?' savings':''):label);
     const opening=round(r.type==='card'?-Math.abs(num(r.opening)):num(r.opening),dec());
-    const a={id:'a_'+newId(),name,bank:r.type==='cash'?'':r.bank||'',type:r.type,opening,color,roles,last4:String(r.last4||'').replace(/\D/g,'').slice(-4),smsIds:[]};
+    const a={id:'a_'+newId(),name,bank:r.type==='cash'?'':r.bank||'',type:r.type,opening,color,roles,last4:String(r.last4||'').replace(/\D/g,'').slice(-4),smsIds:[],anchor:{date:todayStr(),at:Date.now()}};
     if(r.type==='card'){ a.limit=round(num(r.limit),dec())||null; a.stmtDay=+r.stmtDay||null; a.dueDay=+r.dueDay||null; }
     p.accounts.push(a); }
   bulkRows=null; persist('profile'); $('#dlg').close(); celebrate(); toast(`${rows.length} account${rows.length>1?'s':''} added — you now have ${p.accounts.length}`); render();
@@ -2266,7 +2343,8 @@ function saveBulk(){
 /* account editor with live preview */
 function openAcct(id){
   const a=id?acct(id):null;
-  fd=a?{kind:'acct',...clone(a),opening:String(a.opening||0),roles:(a.roles||[]).slice(),color:accColor(a),smsIds:(a.smsIds||[]).join(', ')}:{kind:'acct',id:null,name:'',bank:'',type:'bank',opening:'0',roles:['spending'],color:nextCardColor(),last4:'',smsIds:''};
+  const nowBal=a?round(balances()[a.id]||0,dec()):0;
+  fd=a?{kind:'acct',...clone(a),current:String(a.type==='card'?round(-nowBal,dec()):nowBal),roles:(a.roles||[]).slice(),color:accColor(a),smsIds:(a.smsIds||[]).join(', ')}:{kind:'acct',id:null,name:'',bank:'',type:'bank',current:'',roles:['spending'],color:nextCardColor(),last4:'',smsIds:''};
   renderAcctEditor(!!a);
 }
 function renderAcctEditor(isEdit){
@@ -2279,8 +2357,8 @@ function renderAcctEditor(isEdit){
     <div class="field"><span class="lab">What do you use it for?</span><div class="chips">${ROLES.map(([r,l])=>`<button class="chip" data-act="accRole" data-v="${r}" aria-pressed="${f.roles.includes(r)}">${l}</button>`).join('')}</div>
       <p class="hint">Money moved into an account marked Savings counts as saved. Spending straight from it is flagged.</p></div>
     <div class="two"><div class="field"><label>Type</label><select class="sel" data-fd="type" data-live>${Object.entries(TYPE_LABEL).map(([v,l])=>`<option value="${v}"${f.type===v?' selected':''}>${l}</option>`).join('')}</select></div>
-    <div class="field"><label>Opening balance</label><input class="inp" inputmode="decimal" value="${esc(f.opening)}" data-fd="opening" data-live></div></div>
-    <p class="hint">Opening balance = what it held before you started tracking. For a credit card, enter what you owe as a negative number.</p>
+    <div class="field"><label>${f.type==='card'?'Amount you owe now':'Current balance'} (${esc(cur())})</label><input class="inp" inputmode="decimal" value="${esc(f.current)}" data-fd="current" data-live placeholder="0"></div></div>
+    <p class="hint">${f.type==='card'?'What the card statement or bank app says you owe today.':'What your bank app shows right now.'} Bank messages you import later — even older ones — keep it right${P().sms&&P().sms.syncBal===false?'':', and a balance in a bank message updates it'}.</p>
     ${f.type==='card'?`<div class="field"><span class="lab">Credit card details <span class="muted">(optional)</span></span>
       <div class="two"><div class="field"><label>Credit limit</label><input class="inp" inputmode="decimal" value="${esc(f.limit||'')}" placeholder="e.g. 1000" data-fd="limit"></div><div class="field"><label>Minimum payment %</label><input class="inp" inputmode="decimal" value="${esc(f.minPct||'')}" placeholder="5" data-fd="minPct"></div></div>
       <div class="two"><div class="field"><label>Statement day</label><select class="sel" data-fd="stmtDay"><option value="">—</option>${Array.from({length:28},(_,i)=>i+1).map(d=>`<option${+f.stmtDay===d?' selected':''}>${d}</option>`).join('')}</select></div>
@@ -2289,7 +2367,7 @@ function renderAcctEditor(isEdit){
     `${isEdit?'<button class="btn danger" data-act="aDelete">Delete</button>':''}<span class="spacer"></span><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="aSave">Save</button>`);
   const nb=$('#dlg .dlg-b'); if(nb) nb.scrollTop=sc;
 }
-const previewBal=f=>f.id&&acct(f.id)?(balances()[f.id]||0)-(+acct(f.id).opening||0)+num(f.opening):num(f.opening);
+const previewBal=f=>f.type==='card'?-num(f.current):num(f.current);
 function updateAcctPreview(){
   const f=fd, p=$('#accPreview'); if(!p||!f) return;
   p.style.background=accGrad(f.color); p.style.color=accInk(f.color);
@@ -2673,10 +2751,13 @@ document.addEventListener('click',async e=>{
     case 'invAdd': { const id=addHolding($('#invNew').value,'other'); if(id) d.investmentId=id; renderTxDlg(); break; }
     /* accounts */
     case 'editAcct': openAcct(v||null); break;
-    case 'aSave': { const name=(fd.name||'').trim()||(fd.bank||'').trim(); if(!name) return fErr('Give the account a name or pick a bank.'); const opening=round(num(fd.opening),dec());
+    case 'aSave': { const name=(fd.name||'').trim()||(fd.bank||'').trim(); if(!name) return fErr('Give the account a name or pick a bank.'); const curBal=round(fd.type==='card'?-num(fd.current):num(fd.current),dec());
       const last4=String(fd.last4||'').replace(/\D/g,'').slice(-4); const smsIds=[...new Set((String(fd.smsIds||'').match(/\d{3,}/g)||[]).map(x=>x.slice(-4)).filter(x=>x!==last4))];
       const clash=[last4,...smsIds].filter(Boolean).map(n=>({n,a:P().accounts.find(x=>x.id!==fd.id&&acctNums(x).includes(n))})).find(x=>x.a); if(clash) return fErr(`•••• ${clash.n} already belongs to ${clash.a.name}.`);
-      const data={name,bank:(fd.bank||'').trim(),type:fd.type,opening,color:fd.color,roles:fd.roles.slice(),last4,smsIds};
+      // you give the balance today; the opening balance is worked back from your transactions
+      const old=fd.id?acct(fd.id):null, nowBal=old?round(balances()[old.id]||0,dec()):0, changed=!old||Math.abs(curBal-nowBal)>=10**-dec();
+      const opening=old?round((+old.opening||0)+curBal-nowBal,dec()):curBal;
+      const data={name,bank:(fd.bank||'').trim(),type:fd.type,opening,color:fd.color,roles:fd.roles.slice(),last4,smsIds}; if(changed) data.anchor={date:todayStr(),at:Date.now()};
       if(fd.type==='card'){ data.limit=round(num(fd.limit),dec())||null; data.stmtDay=+fd.stmtDay||null; data.dueDay=+fd.dueDay||null; data.minPct=num(fd.minPct)||null; }
       if(fd.id){ const x=acct(fd.id); Object.assign(x,data); delete x.demoTheme; } else { const nid='a_'+newId(); p.accounts.push({id:nid,...data}); u.acct=nid; }
       { const back=fd.back; persist('profile'); toast('Card saved'); render(); if(back==='hub') openBulk(); else { $('#dlg').close(); celebrate(); } } break; }
@@ -2748,8 +2829,9 @@ document.addEventListener('click',async e=>{
     case 'smsDismiss': { const S=p.sms||(p.sms={}); S.dismissed=true; persist('profile'); render(false); break; }
     case 'smsDone': { const S=p.sms||(p.sms={}); S.setup=true; persist('profile'); $('#dlg').close(); render(false); toast('Great — tap “Import bank SMS” whenever you like'); break; }
     case 'smsCopy': { const ok=await copyText(v); toast(ok?'Copied':'Couldn’t copy'); break; }
-    case 'bankFix': { const a=acct(v); if(!a||!a.bankBal) break; const now=balances()[v]||0; const diff=round(a.bankBal.v-(now-sum(allTx().filter(t=>t.date>a.bankBal.date),t=>acctEffect(t,v))),dec()); if(!diff) break;
-      if(await ask(`Make ${a.name} match your bank (${money(a.bankBal.v)} ${cur()} on ${shortD(a.bankBal.date)})? Masroof adjusts the opening balance by ${money(diff,{sign:true})} — your transactions don’t change.`,'Match bank')){ a.opening=round((+a.opening||0)+diff,dec()); persist('profile'); toast('Balance now matches your bank'); if($('#dlg').open) openAccountSheet(v); render(false); } break; }
+    case 'bankFix': { const a=acct(v); if(!a||!a.bankBal) break; const diff=round(a.bankBal.v-balAtBank(a),dec()); if(!diff) break;
+      if(await ask(`Make ${a.name} match your bank (${money(a.bankBal.v)} ${cur()} on ${shortD(a.bankBal.date)})? Your transactions don’t change.`,'Match bank')){ syncToBank(a); persist('profile'); toast('Balance now matches your bank'); if($('#dlg').open) openAccountSheet(v); render(false); } break; }
+    case 'smsSyncBal': { const S=P().sms||(P().sms={}); S.syncBal=S.syncBal===false; persist('profile'); toast(S.syncBal?'Balances will follow your bank’s messages':'Balances won’t change from bank messages'); break; }
     case 'impBack': imp.rows=[]; imp.msg=''; renderImport(); break;
     case 'impDo': doImport(); break;
     case 'demo': loadDemo(); break;
@@ -2870,9 +2952,9 @@ document.addEventListener('change',e=>{
   if(t.dataset.fxmine){ const m=P().fxMine||(P().fxMine={}); const v=num(t.value); if(v>0) m[t.dataset.fxmine]=v; else delete m[t.dataset.fxmine]; persist('profile'); toast(v>0?'Your rate is saved':'Back to the standard rate'); return; }
   if(t.dataset.imp){ const r=imp.rows[+t.dataset.i]; const f=t.dataset.imp;
     if(f==='on'){r.on=t.checked;renderImport();}
-    else if(f==='type'){ r.type=t.value; r.refund=false; if(r.type==='transfer'){ if(!r.toAccountId||r.toAccountId===r.accountId) r.toAccountId=(P().accounts.find(a=>a.id!==r.accountId)||{}).id; }
+    else if(f==='type'){ r.type=t.value; r.refund=false; r.unsure=false; r.on=true; if(r.type==='transfer'){ if(!r.toAccountId||r.toAccountId===r.accountId) r.toAccountId=(P().accounts.find(a=>a.id!==r.accountId)||{}).id; }
       else { const g=guessCategory(r.merchant,r.type); r.catId=g?g.catId:(r.type==='income'?'inc_other':'other'); r.item=g&&g.item||''; } renderImport(); }
-    else { r[f]=t.value; if(f==='accountId') r.acctSure=true; if(f==='catId') r.item=''; }
+    else { r[f]=t.value; if(f==='accountId'){ r.acctSure=true; r.how='you'; } if(f==='catId') r.item=''; }
     return; }
   if(t.dataset.budget){ const v=num(t.value); if(v>0) p.budgets[t.dataset.budget]=round(v,dec()); else delete p.budgets[t.dataset.budget]; persist('profile'); toast('Budget saved'); return; }
   if(t.dataset.lim){ const k=t.dataset.lim; p.limits[k]=k==='scope'?t.value:round(num(t.value),dec()); if(k==='warnAt') p.limits[k]=+t.value; persist('profile'); toast('Limit saved'); return; }
