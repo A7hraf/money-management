@@ -7,31 +7,30 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 
 ## What it does
 
-- **Home:** a wallet card for each account (swipe to switch, tap to flip). Also on Home:
-  - spending for the day, week, month or year, with income, saved and left
-  - daily limit (fixed or smart), quick add (`karak 0.2 cash`) and one-tap buttons for frequent purchases
-  - budgets, where the money went, "For you" insights, a monthly recap story and a this-month-vs-last chart
-  - a month-end forecast of what you'll have left, from your balance, scheduled payments and your usual spending
-  - an eye button that hides every amount, for using the app in public
-- **Add:** expense, income, transfer, lend/borrow and investments. You can also:
-  - list items with tax, service and discount
+Version 4.0 ("Wallet") is a new design: a near-black night edition (the default) and a warm day edition, a gold coin colour for actions, rounded system fonts, Phosphor icons and a coin-fort logo. Every screen works in English and Arabic (right to left), in both editions.
+
+- **Home:** a greeting with your name, the total of all accounts (it counts up), your cards in a stack (swipe or tap for the next one), a liquid orb with what's left of today's limit, spending today and this month, a card for bank messages waiting for you, this month's top categories as bars, today's timeline and a teaser of the spending map. The eye button hides every amount; the logo opens Settings.
+- **Add (the gold ＋):** expense, income, transfer, lend/borrow and investments. Type the amount on the keypad at the bottom of the sheet. In *What or where?* you can also type `karak 0.2 cash` or `coffee 15 aed` and the amount, account and currency are filled in. Category tiles, account chips and Today / Yesterday / Other day are one tap each. *More options* holds:
   - split with friends (equally, by amount or by item)
-  - record refunds, foreign currency, repeating payments, installments and tags
-- **Paste a bill read by Claude** to fill in the items, categories, VAT and total.
-- **Bank SMS, automatically:** an iPhone Shortcuts automation saves every bank SMS to a file in the background, and Masroof imports it in one tap. See [Bank SMS](#bank-sms) below.
-  - reads English and Arabic messages (including Arabic digits and ر.ع)
-  - puts each message on the right account using the card or account's last 4 digits, or the bank's name
-  - turns a debit from one of your accounts and a credit into another into a single transfer, and an ATM withdrawal into a transfer to Cash
-  - ignores OTPs, declined payments and balance amounts
-  - skips messages it has already imported, so you can import the same file every time
-  - "Add without asking" adds messages from known cards straight away; anything unclear waits for you
-  - remembers the balance the bank reports, and shows on each account whether Masroof matches it
-- **Activity:** filter by month, type, category or account, or search every month at once. The calendar view tints each day by how much you spent; tap a day to see it. Swipe a row to repeat, edit or delete it.
-- **Friends:** who owes whom, settle up, and copy a reminder. Loans can have a pay-back date; it shows on the friend and in "Coming up", and turns red when overdue.
-- **Wealth:** net worth, your cards stacked like Apple Wallet, investments with gain/loss, and savings goals. **Add several accounts at once** (bank, type, last 4 digits, balance), from Wealth or Settings → Accounts & cards.
-- **Credit cards:** add the limit, statement day and due day. Each card then shows its statement balance, what's left to pay, the due date, the minimum payment and your available credit, with a **Pay** button. Card payments that are due also appear in "Coming up".
+  - another currency, repeating payments and instalments, refunds, tags
+  - list items with tax, service and discount
+  Tap outside the sheet to close it; an unsaved entry comes back with Undo.
+- **Paste a bill read by Claude** (the dashed *Add bill text* row) to fill in the items, categories, VAT and total. A preview shows what was read before you use it.
+- **Bank SMS, automatically:** an iPhone Shortcuts automation saves every bank SMS to a file in the background, and Masroof brings it in with one tap. See [Bank SMS](#bank-sms) below.
+  - messages Masroof is sure about can go straight in (*Add sure bank messages by itself*)
+  - the rest wait in **Bank messages**, one card at a time: swipe right (or ✓) to add it, left (or ×) to skip it, or *Confirm N* to add all the sure ones. Each card shows the SMS, the amount, money in or out, the account (and why Masroof picked it), the category and the bank's balance after it. Fix anything on the card first; Masroof remembers your answer for that kind of message.
+  - the queue is saved, encrypted, until you get to it
+  - reads English and Arabic messages (including Arabic digits and ر.ع), turns a debit and a credit between your own accounts into one transfer and an ATM withdrawal into a transfer to Cash, ignores OTPs, declined payments and promotions, and never imports the same message twice
+- **Activity:** every month, newest first, grouped by day. Search shops, notes or amounts; the pills show All, Spent, Received or With bills. The slider button opens finer filters: month, type, category, account, the spending calendar (each day tinted by how much you spent) and CSV export. Swipe a row to repeat, edit or delete it.
+- **Friends** (from You): owed to you and you owe, each friend with their balance, a WhatsApp-ready reminder, settle up, split a bill, lend or borrow. Loans can have a pay-back date that turns red when overdue.
+- **Wealth:** net worth split into banks and cash, investments and money owed to you; savings goals with progress, where the money is kept, the plan and when it gets there; investments with gain or loss.
+- **New goal in four steps:** what it's for, how much and by when (12 to 48 months or any date), where it's kept (and whether the whole balance counts or only the deposits for it), and how you'll save (weekly, monthly or yearly, from another account, the cash deposit machine or by hand, recorded automatically if you like). A hint works out the monthly amount as you go.
+- **You:** Accounts & cards, Friends, Bank messages, Spending map, Reminders and the Monthly report, plus Settings and Lock now.
+- **Settings** in five groups: Security (Face ID, auto-lock, passcode), Automatic (Bank SMS setup, adding sure messages by itself, keeping balances matching the bank, repeating payments, reminders), Money (daily limit, budgets, categories, quick-add buttons, currencies and rates), Look (your name, language, Night / Day / Auto) and Your data (backup, restore, reports, privacy, demo data, erase).
+- **Lock screen:** a passcode of digits unlocks with a round keypad (6 or more digits; Masroof keeps only how many digits it has, never the digits). Any other passcode uses the keyboard, and you can switch between the two. A short "Opening your ledger" screen follows (tap the fort to stack coins while you wait, or anywhere else to skip).
+- **Credit cards:** add the limit, statement day and due day. Each card then shows its statement balance, what's left to pay, the due date, the minimum payment and your available credit.
 - **Reminders in Calendar:** Masroof can't send notifications itself, so it exports your bills, card and loan due dates, plus an optional daily "import bank SMS" reminder, to your iPhone Calendar. Calendar then alerts you even when Masroof is closed.
-- **Monthly PDF report** from Activity's export button: a summary, categories against budgets, a day-by-day chart, top places, account balances and every transaction. It's made on the phone, even offline.
+- **Monthly PDF report** (You › Monthly report): a summary, categories against budgets, a day-by-day chart, top places, account balances and every transaction. It's made on the phone, even offline.
 - **Bank SMS that read right.** Amounts with OMR, RO, R.O., ر.ع or no currency at all, "Dr"/"Cr", English and Arabic. The account comes from the card or account number, then the balance in the message (the bank's previous balance minus this amount must give the new one), then an account you chose before for the same kind of message, then the bank's name (the automation also saves the sender) or the kind of card. Money in or out is checked against the balance too. OTPs, declined payments and promotions are skipped.
 - **Current balances, not opening balances.** Each account takes the balance your bank shows today (for a credit card, what you owe). Older messages imported later don't move it, and the balance in the newest bank message keeps it exact (Settings › Bank SMS › Keep balances matching the bank).
 - **Every activity in detail.** Tap one to see it in full. A bill shows the categories it splits into, every item with its quantity and cost, and the VAT, service charge, discount and total. Edit anything from there: changes keep the bank SMS, location and goal it belongs to.
@@ -40,8 +39,8 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 - **Any currency, converted:** Masroof recognises about 50 currencies by code, symbol or word, in English and Arabic (AED, Dhs, درهم, $, €, £, ₹, ₺, baht, ريال سعودي…). Each one comes from a bank SMS, from quick add ("coffee 15 aed", "$12 uber") or from the form, and is converted to your currency. Masroof keeps the original amount and remembers the country (from the currency, or from the country code at the end of a card SMS such as "CARREFOUR DUBAI AE"), so the transaction shows its flag and appears there on the map. If the bank's SMS gives the amount in your currency, that exact figure is used. Rates are built in: the Gulf currencies are pegged to the dollar, so their rates are exact, and the others are approximate. In Settings › Exchange rates you can download today's rates (once, or daily when online) or type your own rate for any currency. Downloading the rates fetches a public list and sends nothing about you.
 - **Spending map:** a full-screen 3D Earth (WebGL) with city lights at night or a satellite view by day, country borders, a glowing bar for every place you spent money (taller for more money, coloured by category) and arcs from your home city. Spin and zoom it, swipe through the place cards, press play to watch your spending month by month, and tap a place to see when you spent there. A place comes from your iPhone's location if you turn on *Remember where I spend*, from a city named in the note or bank SMS, or from a foreign currency. Anything else shows at your home city. No map service is used.
 - **Face ID unlock** (iOS 18 or later): your passcode still works, and backups never include the Face ID key.
-- **Arabic:** switch the language in Settings → General or on the lock screen. The whole app switches to Arabic with a right-to-left layout, and amounts keep Western digits.
-- **Settings:** a month that starts on your payday (e.g. 25th to 24th), budgets that can carry unspent money into next month, repeating payments, categories and items, and Home sections. Security settings are here too: auto-lock, change passcode, and encrypted backup/restore. You can also export a CSV.
+- **Arabic:** switch the language in Settings › Look or on the lock screen. The whole app switches to Arabic with a right-to-left layout, and amounts keep Western digits.
+- **Also in Settings:** a month that starts on your payday (e.g. 25th to 24th) under Currencies & rates, and budgets that can carry unspent money into next month.
 
 ## Files
 
@@ -49,9 +48,11 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 index.html        page shell
 sw.js             offline cache (fetches fresh code when online, cached copy offline)
 manifest.json     Home Screen app settings
-css/app.css       design (light + dark)
+css/app.css       base styles (light + dark)
+css/v4.css        the 4.0 "Wallet" design: screens, sheets, motion
 js/app.js         the app: storage, encryption, screens, receipt and SMS reading
 js/i18n.js        Arabic words for every screen
+js/icons.js       Phosphor icons used by the app (MIT licence, see js/vendor/LICENSE-phosphor.txt)
 js/fx.js          currencies: country, flag, words and symbols, built-in rates
 js/globe3d.js     the 3D spending map (WebGL, uses the bundled globe.gl)
 js/globe.js       a simpler canvas globe used when WebGL isn't available
@@ -60,7 +61,7 @@ js/vendor/        globe.gl (MIT licence, see LICENSE-globe.gl.txt)
 images/earth-*.jpg     Earth textures (NASA Blue Marble and Black Marble, public domain)
 js/globe-data.js  land dots for the globe (Natural Earth, public domain)
 version.json      the newest version, for the in-app update banner
-images/           logo and Home Screen icons
+images/           coin-fort logo and Home Screen icons
 .nojekyll         tells GitHub Pages to serve files as-is
 ```
 
@@ -84,15 +85,18 @@ Apple doesn't let any app read your text messages. Your iPhone's Shortcuts app c
 4. Add **Append to Text File** with the path `Masroof/bank-sms.txt`, and turn on **Make New Line**.
 5. If your bank texts in Arabic, make a second automation with **Message Contains** `ر.ع`.
 
-Every bank SMS is now added to *iCloud Drive › Shortcuts › Masroof › bank-sms.txt*, even while Masroof is closed. In Masroof, tap **Import bank SMS** (Home, or Settings → Bank SMS) and pick that file. The same steps are in the app, under **Settings → Bank SMS → Set it up**.
+Every bank SMS is now added to *iCloud Drive › Shortcuts › Masroof › bank-sms.txt*, even while Masroof is closed. In Masroof, open **Bank messages** (the card on Home, or You › Bank messages) and tap **Choose the bank SMS file**. The same steps are in the app, under **Settings › Bank SMS setup**.
 
 ## Things to know
 
 - Always open Masroof from the Home Screen icon. Safari tabs keep separate data.
-- There is no way to recover a forgotten passcode. Save an encrypted backup regularly (**Settings → Backups**) to Files or iCloud Drive. A backup opens only with the passcode you had when you made it.
+- There is no way to recover a forgotten passcode. Save an encrypted backup regularly (**Settings › Encrypted backup**) to Files or iCloud Drive. A backup opens only with the passcode you had when you made it.
 - **Never delete the Home Screen icon to update.** On iPhone each Home Screen app has its own storage, so deleting the icon deletes all your data. A new icon starts empty and asks for a new passcode. If you ever have to do it, save a backup first and restore it in the new icon.
 - **To update the app:** push your changes to `main`, then wait a minute or two for GitHub Pages. The next time you open Masroof while online, or come back to it at the lock screen, it loads the new version. Your data and passcode stay the same. No version bump is needed.
 
 ## Licences
 
-
+- [Phosphor Icons](https://phosphoricons.com) (MIT): the icons, bundled in `js/icons.js`. See `js/vendor/LICENSE-phosphor.txt`.
+- [globe.gl](https://github.com/vasturiano/globe.gl) (MIT): the 3D map. See `js/vendor/LICENSE-globe.gl.txt`.
+- Natural Earth (public domain): country borders and land dots.
+- NASA Blue Marble and Black Marble (public domain): Earth textures.

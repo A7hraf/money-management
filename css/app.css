@@ -1,37 +1,44 @@
-/* Masroof — one design system.
-   Brand: deep navy (#0E3159 → #061529) with the logo's teal → green glow (#1FA2A0 → #3CCB6E). */
-
+/* Masroof 4.0 "Wallet" — one design system. Dark is the default; Day overrides it.
+   Ink and paper, with cyan for money in, magenta for money out and alerts, and the gold coin
+   (#EDBB00) for primary actions. The older variable names below the new ones map onto them so
+   every screen follows the same palette. */
 :root{
-  --bg:#F3F5F8; --surface:#FFFFFF; --sunk:#EEF1F5; --ink:#0B1728; --ink-2:#34445A; --muted:#687589;
-  --line:rgba(11,23,40,.08); --line-2:rgba(11,23,40,.14);
-  --brand:#0A7C72; --brand-ink:#FFFFFF; --brand-soft:#E2F4F0; --brand-2:#1FA2A0; --brand-3:#3CCB6E;
-  --grad:linear-gradient(135deg,#1FA2A0 0%,#3CCB6E 100%);
-  --navy:#0E3159; --navy-2:#061529;
-  --hero:radial-gradient(110% 90% at 105% -10%,rgba(60,203,110,.42) 0%,transparent 55%),radial-gradient(90% 80% at -10% 115%,rgba(31,162,160,.45) 0%,transparent 60%),linear-gradient(160deg,#154677 0%,#0B2749 50%,#061529 100%);
-  --spend:#DC3F45; --earn:#12915A; --save:#2F6FEB; --invest:#7353F0; --warn:#B96F00; --gold:#E9B44C; --gold-soft:#FCF1DA;
-  --shadow:0 1px 2px rgba(11,23,40,.04),0 6px 20px rgba(11,23,40,.05);
-  --shadow-2:0 16px 40px rgba(11,23,40,.14);
-  --display:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
-  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
-  --r:20px; --r-sm:14px; --tabh:62px; --spring:cubic-bezier(.2,.9,.25,1.05); --ease:cubic-bezier(.2,.8,.2,1);
-  --acc:#1FA2A0;
-  box-sizing:border-box; color-scheme:light;
+  --bg:#0B0B0C; --card:#19191B; --card2:#26262A; --ink:#F4F3F1; --ink2:#C9C6C2; --muted:#8E8C8A;
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.18);
+  --cyan:#38A6CF; --mag:#FF458E; --yel:#EDBB00; --onyel:#1A1500; --orbInk:#F4F3F1;
+  --scrim:rgba(0,0,0,.6); --tab:rgba(28,28,30,.88);
+  --fn:ui-rounded,"SF Pro Rounded",system-ui,sans-serif;
+  /* older names */
+  --surface:var(--card); --sunk:var(--card2); --ink-2:var(--ink2); --line-2:var(--line2);
+  --brand:var(--cyan); --brand-ink:#FFFFFF; --brand-soft:rgba(56,166,207,.14); --brand-2:var(--cyan); --brand-3:var(--yel);
+  --grad:linear-gradient(135deg,#F3C514 0%,#EDBB00 100%);
+  --navy:#19191B; --navy-2:#0B0B0C;
+  --hero:radial-gradient(90% 70% at 50% 0%,rgba(56,166,207,.16) 0%,transparent 60%),var(--bg);
+  --spend:var(--mag); --earn:var(--cyan); --save:#6EA0FF; --invest:#A28EFF; --warn:#F2B13A; --gold:#EDBB00; --gold-soft:#33270E;
+  --shadow:none; --shadow-2:0 16px 40px rgba(0,0,0,.5);
+  --display:var(--fn);
+  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  --r:22px; --r-sm:14px; --tabh:68px; --spring:cubic-bezier(.2,.9,.25,1.05); --ease:cubic-bezier(.2,.9,.25,1);
+  --acc:#38A6CF;
+  box-sizing:border-box; color-scheme:dark;
 }
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    --bg:#060B12; --surface:#0F1722; --sunk:#172231; --ink:#E8EEF6; --ink-2:#C3CDDA; --muted:#8C9AAE;
-    --line:rgba(232,238,246,.08); --line-2:rgba(232,238,246,.15);
-    --brand:#34C7A0; --brand-ink:#03140F; --brand-soft:#0E2A26;
-    --spend:#FF6B70; --earn:#3DD68C; --save:#6EA0FF; --invest:#A28EFF; --warn:#F2B13A; --gold-soft:#33270E;
-    --shadow:none; --shadow-2:0 16px 40px rgba(0,0,0,.5); color-scheme:dark;
+:root[data-theme="light"]{
+  --bg:#F2F1EF; --card:#FFFFFF; --card2:#EAE8E6; --ink:#161514; --ink2:#45423F; --muted:#6E6B68;
+  --line:rgba(0,0,0,.07); --line2:rgba(0,0,0,.18);
+  --cyan:#0088B0; --mag:#D6006C; --orbInk:#161514; --scrim:rgba(20,18,16,.35); --tab:rgba(255,255,255,.9);
+  --brand-soft:rgba(0,136,176,.12); --gold-soft:#FCF1DA; --warn:#B96F00; --save:#2F6FEB; --invest:#7353F0;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.05); --shadow-2:0 16px 40px rgba(0,0,0,.14);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:light){
+  :root[data-theme="auto"]{
+    --bg:#F2F1EF; --card:#FFFFFF; --card2:#EAE8E6; --ink:#161514; --ink2:#45423F; --muted:#6E6B68;
+    --line:rgba(0,0,0,.07); --line2:rgba(0,0,0,.18);
+    --cyan:#0088B0; --mag:#D6006C; --orbInk:#161514; --scrim:rgba(20,18,16,.35); --tab:rgba(255,255,255,.9);
+    --brand-soft:rgba(0,136,176,.12); --gold-soft:#FCF1DA; --warn:#B96F00; --save:#2F6FEB; --invest:#7353F0;
+    --shadow:0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.05); --shadow-2:0 16px 40px rgba(0,0,0,.14);
+    color-scheme:light;
   }
-}
-:root[data-theme="dark"]{
-  --bg:#060B12; --surface:#0F1722; --sunk:#172231; --ink:#E8EEF6; --ink-2:#C3CDDA; --muted:#8C9AAE;
-  --line:rgba(232,238,246,.08); --line-2:rgba(232,238,246,.15);
-  --brand:#34C7A0; --brand-ink:#03140F; --brand-soft:#0E2A26;
-  --spend:#FF6B70; --earn:#3DD68C; --save:#6EA0FF; --invest:#A28EFF; --warn:#F2B13A; --gold-soft:#33270E;
-  --shadow:none; --shadow-2:0 16px 40px rgba(0,0,0,.5); color-scheme:dark;
 }
 
 /* ---------- base ---------- */
