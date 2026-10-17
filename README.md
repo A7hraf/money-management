@@ -42,20 +42,28 @@ Version 4.0 ("Wallet") is a new design: a near-black night edition (the default)
 - **Arabic:** switch the language in Settings › Look or on the lock screen. The whole app switches to Arabic with a right-to-left layout, and amounts keep Western digits.
 - **Also in Settings:** a month that starts on your payday (e.g. 25th to 24th) under Currencies & rates, and budgets that can carry unspent money into next month.
 
+## Security
+
+- Everything is encrypted on the phone with AES‑256‑GCM, with a key from your passcode (PBKDF2‑SHA256, 600,000 rounds). Wrong passcodes slow down after five tries, and you can choose to erase everything after ten.
+- Nothing about you is sent anywhere. The app only ever downloads its own files, `version.json` (to offer updates) and, if you ask for them, a public list of exchange rates.
+- A strict Content Security Policy allows scripts only from the app itself and connections only to the two exchange-rate addresses.
+- Bank SMS, bill text and everything you type are treated as text, never as code, on every screen. CSV exports stop spreadsheets from running text as a formula.
+- Only harmless settings are kept unencrypted: language, theme, auto-lock, and how many digits a keypad passcode has (never the digits).
+
 ## Files
 
 ```
 index.html        page shell
 sw.js             offline cache (fetches fresh code when online, cached copy offline)
 manifest.json     Home Screen app settings
-css/app.css       base styles (light + dark)
+css/app.css       base styles: tokens, forms, dialogs, the map
 css/v4.css        the 4.0 "Wallet" design: screens, sheets, motion
 js/app.js         the app: storage, encryption, screens, receipt and SMS reading
 js/i18n.js        Arabic words for every screen
-js/icons.js       Phosphor icons used by the app (MIT licence, see js/vendor/LICENSE-phosphor.txt)
+js/icons.js       the Phosphor icons the app uses (MIT licence, see js/vendor/LICENSE-phosphor.txt)
 js/fx.js          currencies: country, flag, words and symbols, built-in rates
 js/globe3d.js     the 3D spending map (WebGL, uses the bundled globe.gl)
-js/globe.js       a simpler canvas globe used when WebGL isn't available
+js/globe.js       a simpler canvas globe, used when WebGL is off (e.g. in Lockdown Mode)
 js/globe-countries.js  country borders (Natural Earth, public domain)
 js/vendor/        globe.gl (MIT licence, see LICENSE-globe.gl.txt)
 images/earth-*.jpg     Earth textures (NASA Blue Marble and Black Marble, public domain)
