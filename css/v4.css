@@ -18,7 +18,6 @@
 @keyframes stack{0%{transform:translateY(-36px);opacity:0}16%{transform:none;opacity:1}80%{transform:none;opacity:1}94%,100%{opacity:0}}
 @keyframes wordIn{from{opacity:0;transform:translateY(10px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
 @keyframes fall{0%{transform:translateY(-160px) rotate(-30deg);opacity:0}20%{opacity:1}100%{transform:none;opacity:1}}
-@keyframes ring{0%{transform:scale(.6);opacity:.9}100%{transform:scale(2.6);opacity:0}}
 @keyframes blink{0%,100%{opacity:.35}50%{opacity:1}}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(237,187,0,.55)}70%{box-shadow:0 0 0 12px rgba(237,187,0,0)}100%{box-shadow:0 0 0 0 rgba(237,187,0,0)}}
 @keyframes wave{from{transform:translateX(0)}to{transform:translateX(-50%)}}
@@ -38,7 +37,6 @@ body.pushed .wrap{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 40px)}
 .wrap.anim{animation:pageIn .45s var(--ease) both}
 .wrap.push{animation:pushL .42s var(--ease) both}
 html[dir="rtl"] .wrap.push{animation-name:pushR}
-.w-pad{padding:0 22px}
 .w-title{padding:12px 22px 0;font:700 32px/1.15 var(--fn);margin:0;letter-spacing:-.01em}
 html[dir="rtl"] .w-title{letter-spacing:0}
 .w-card{margin:10px 22px 0;padding:18px;border-radius:26px;background:var(--card);box-shadow:var(--shadow)}
@@ -47,7 +45,7 @@ html[dir="rtl"] .w-title{letter-spacing:0}
 .w-sec{display:flex;justify-content:space-between;align-items:center;padding:26px 22px 10px}
 .w-sec h2{margin:0;font:700 20px var(--fn)}
 .w-muted{color:var(--muted)}
-.w-cyan{color:var(--cyan)}.w-mag{color:var(--mag)}.w-yel{color:var(--yel)}
+.w-cyan{color:var(--cyan)}.w-mag{color:var(--mag)}
 .w-stagger>*{animation:pageIn .55s var(--ease) both}
 .w-stagger>*:nth-child(1){animation-delay:.05s}.w-stagger>*:nth-child(2){animation-delay:.12s}.w-stagger>*:nth-child(3){animation-delay:.2s}
 .w-stagger>*:nth-child(4){animation-delay:.28s}.w-stagger>*:nth-child(5){animation-delay:.34s}.w-stagger>*:nth-child(6){animation-delay:.4s}.w-stagger>*:nth-child(7){animation-delay:.46s}.w-stagger>*:nth-child(n+8){animation-delay:.5s}
@@ -83,7 +81,6 @@ html[dir="rtl"] .w-tog{justify-content:flex-end}html[dir="rtl"] .w-tog.on{justif
 .tabbar{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);height:68px;border-radius:34px;z-index:40;max-width:520px;margin:0 auto;padding:0 6px;
   background:var(--tab);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:0 10px 30px rgba(0,0,0,.3);border:0}
 .tabbar .in{height:68px;display:flex;align-items:center;justify-content:space-around;padding:0;max-width:none}
-.tabbar .tab-ind{display:none}
 .tabbar button{flex:0 0 62px;width:62px;height:56px;border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--muted);font:600 11px var(--body);transition:color .2s}
 .tabbar button .ic{font-size:24px;transition:transform .3s cubic-bezier(.3,1.6,.5,1)}
 .tabbar button .ic.on{display:none}
@@ -116,7 +113,7 @@ dialog::backdrop{background:var(--scrim);-webkit-backdrop-filter:none;backdrop-f
 .dlg-b .inp,.dlg-b .sel{background:var(--card);border-color:transparent}
 .dlg-b .inp:focus,.dlg-b .sel:focus,.inp:focus{border-color:var(--yel);outline:none}
 .chip{background:var(--card);border-radius:19px}
-.dlg-b .chip,.dlg-b .hscroll .chip{background:var(--card);border:0}
+.dlg-b .chip{background:var(--card);border:0}
 .seg{background:var(--card);border-radius:14px;padding:4px}
 .seg button{border-radius:11px}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
@@ -726,7 +723,7 @@ body.pushed .wrap:has(.gn-foot){padding-bottom:calc(env(safe-area-inset-bottom,0
 .mv-h small{color:#B5B2AE;font-size:12px}
 .mv-style button{display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:17px}
 .mv-style button[aria-pressed="true"]{color:#EDBB00}
-.glass,.mv-time,.mv-card,.mv-detail{background:rgba(30,32,36,.6);border:1px solid rgba(255,255,255,.08);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+.mv-time,.mv-card,.mv-detail{background:rgba(30,32,36,.6);border:1px solid rgba(255,255,255,.08);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
 .mv-time,.mv-detail{border-radius:24px;margin:0 16px}
 .mv-cards{padding:2px 16px}
 .mv-card{border-radius:18px}
