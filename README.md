@@ -92,6 +92,7 @@ Every bank SMS is now added to *iCloud Drive › Shortcuts › Masroof › bank-
 - Always open Masroof from the Home Screen icon. Safari tabs keep separate data.
 - There is no way to recover a forgotten passcode. Save an encrypted backup regularly (**Settings › Encrypted backup**) to Files or iCloud Drive. A backup opens only with the passcode you had when you made it.
 - **Never delete the Home Screen icon to update.** On iPhone each Home Screen app has its own storage, so deleting the icon deletes all your data. A new icon starts empty and asks for a new passcode. If you ever have to do it, save a backup first and restore it in the new icon.
+- **The Home Screen icon doesn't change with an update.** iOS keeps the icon from the day you added the app. To get a new icon: save an encrypted backup (Settings › Encrypted backup), delete the icon, add Masroof again from Safari, and choose *Restore from a backup file instead* when it asks for a new passcode.
 - **To update the app:** push your changes to `main`, then wait a minute or two for GitHub Pages. The next time you open Masroof while online, or come back to it at the lock screen, it loads the new version. Your data and passcode stay the same. No version bump is needed.
 
 ## Licences
