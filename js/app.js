@@ -11,7 +11,7 @@ const newId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).sl
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 // the version shown in Settings › About; version.json on the site holds the newest one
-const APP_VERSION='4.2';
+const APP_VERSION='4.2.1', NEWS_VERSION=APP_VERSION.split('.').slice(0,2).join('.'); // What's new shows once per feature release
 // language: English or Arabic (the Arabic words live in js/i18n.js). Day/month names switch in place.
 let LANG='en';
 const MONTHS_EN=MONTHS.slice(), MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -2110,7 +2110,7 @@ function closeRow(except){ if(openRow&&openRow!==except){ openRow.classList.add(
 document.addEventListener('pointerdown',e=>{
   if(e.button>0) return;
   const tx=e.target.closest('.swipe .tx');
-  const sheet=!tx&&e.target.closest('dialog .dlg-h, dialog .w-grab, dialog .bl4-h')&&!e.target.closest('button');
+  const sheet=!tx&&e.pointerType!=='touch'&&e.target.closest('dialog .dlg-h, dialog .w-grab, dialog .bl4-h')&&!e.target.closest('button');
   if(!tx&&!sheet){ if(openRow&&!e.target.closest('.swipe .acts')) closeRow(); return; }
   const el=tx||e.target.closest('dialog');
   const base=tx&&tx===openRow?(parseFloat((tx.style.transform.match(/-?[\d.]+/)||[0])[0])||0):0;
@@ -2139,6 +2139,31 @@ function endDrag(){
   }
 }
 document.addEventListener('pointerup',endDrag,{passive:true});
+/* on a phone, pull a sheet down to close it: by its handle or title, or anywhere on it while its content is
+   scrolled to the top (as iOS sheets do). Touch events, because Safari cancels a pointer drag once it scrolls. */
+let sd=null;
+const SHEET_ZONE='.w-grab, .dlg-h, .bl4-h, .rc4-h, .tv4-hero, .fr4-hero';
+document.addEventListener('touchstart',e=>{
+  sd=null; if(e.touches.length!==1) return; const t=e.target, dlg=t.closest&&t.closest('dialog[open]'); if(!dlg||dlg.id!=='dlg') return;
+  if(t.closest('input:not([type=checkbox]),textarea,select,[contenteditable],input[type=range]')) return;
+  const sc=t.closest('.w-sheet .body, .dlg-b'), p=e.touches[0];
+  sd={dlg,sc,zone:!!t.closest(SHEET_ZONE),top:!sc||sc.scrollTop<=0,x0:p.clientX,y0:p.clientY,dy:0,dir:null,on:false,ly:p.clientY,lt:e.timeStamp,v:0};
+},{passive:true});
+document.addEventListener('touchmove',e=>{
+  if(!sd) return; const p=e.touches[0], dx=p.clientX-sd.x0, dy=p.clientY-sd.y0;
+  if(!sd.dir){ if(Math.abs(dx)<6&&Math.abs(dy)<6) return; sd.dir=Math.abs(dy)>Math.abs(dx)?'v':'h'; if(sd.dir!=='v'||dy<0||!(sd.zone||(sd.top&&(!sd.sc||sd.sc.scrollTop<=0)))){ sd=null; return; } sd.on=true; sd.dlg.classList.remove('snap'); sd.dlg.style.transition='none'; }
+  if(!sd.on) return; e.preventDefault();
+  sd.dy=Math.max(0,dy); const dt=Math.max(1,e.timeStamp-sd.lt); sd.v=(p.clientY-sd.ly)/dt; sd.ly=p.clientY; sd.lt=e.timeStamp;
+  sd.dlg.style.transform=`translateY(${sd.dy}px)`;
+},{passive:false});
+function sheetDragEnd(){
+  const d=sd; sd=null; if(!d||!d.on) return; suppressClick=true; setTimeout(()=>suppressClick=false,80);
+  const h=d.dlg.offsetHeight||600;
+  if(d.dy>Math.min(140,h*.25)||(d.v>.5&&d.dy>40)){ d.dlg.style.transition='transform .22s ease-in'; d.dlg.style.transform='translateY(100%)'; buzz(6); setTimeout(()=>{ d.dlg.close(); d.dlg.style.transition=''; d.dlg.style.transform=''; },210); }
+  else { d.dlg.style.transition='transform .3s var(--spring)'; d.dlg.style.transform=''; setTimeout(()=>{ d.dlg.style.transition=''; },310); }
+}
+document.addEventListener('touchend',sheetDragEnd,{passive:true});
+document.addEventListener('touchcancel',sheetDragEnd,{passive:true});
 document.addEventListener('pointercancel',endDrag,{passive:true});
 document.addEventListener('click',e=>{
   if(suppressClick){ e.stopPropagation(); e.preventDefault(); suppressClick=false; return; }
@@ -2670,7 +2695,7 @@ function afterUnlock(isNew){
   document.body.classList.remove('locked'); $('#lock').hidden=true; $('#lock').innerHTML=''; $('#main').hidden=false;
   fillProfile(); state.ready=true; lastActive=Date.now(); openDay=todayStr();
   if(!isNew) runRecurring();
-  if(state.profile.seenVersion!==APP_VERSION){ const first=isNew||!state.profile.seenVersion&&!allTx().length; state.profile.seenVersion=APP_VERSION; persist('profile'); if(!first) setTimeout(()=>{ if(!$('#dlg').open&&state.ready) openWhatsNew(); },3000); }
+  if(state.profile.seenVersion!==NEWS_VERSION){ const first=isNew||!state.profile.seenVersion&&!allTx().length; state.profile.seenVersion=NEWS_VERSION; persist('profile'); if(!first) setTimeout(()=>{ if(!$('#dlg').open&&state.ready) openWhatsNew(); },3000); }
   state.ui.tab='home'; render(); window.scrollTo(0,0);
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().then(v=>{persistGranted=v;}).catch(()=>{});
   setTimeout(cleanReceipts,3000); setTimeout(fxAutoCheck,2500);

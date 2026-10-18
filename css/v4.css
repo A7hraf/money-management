@@ -118,6 +118,8 @@ dialog::backdrop{background:var(--scrim);-webkit-backdrop-filter:none;backdrop-f
 .seg button{border-radius:11px}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 .w-grab{width:40px;height:5px;border-radius:3px;background:var(--muted);opacity:.4;margin:10px auto 0;flex:none}
+.w-grab{position:sticky;top:8px;z-index:6;touch-action:none}.w-grab::before{content:"";position:absolute;inset:-14px -90px}
+.w-sheet .body,dialog .dlg-b{overscroll-behavior:contain}
 .w-sheet{display:flex;flex-direction:column;max-height:inherit}
 .w-sheet .body{flex:1;overflow-y:auto;padding:0 0 16px;-webkit-overflow-scrolling:touch}
 .w-sheet .foot{padding:10px 16px calc(16px + env(safe-area-inset-bottom,0px));background:var(--bg)}
