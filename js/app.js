@@ -11,7 +11,7 @@ const newId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).sl
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 // the version shown in Settings › About; version.json on the site holds the newest one
-const APP_VERSION='4.0';
+const APP_VERSION='4.1';
 // language: English or Arabic (the Arabic words live in js/i18n.js). Day/month names switch in place.
 let LANG='en';
 const MONTHS_EN=MONTHS.slice(), MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -493,6 +493,8 @@ function render(full=true){
   else if(tab==='accounts') m.innerHTML=viewAccounts4();
   else if(tab==='sms') m.innerHTML=viewSms4();
   else if(tab==='goalnew') m.innerHTML=viewGoalNew4();
+  else if(tab==='acct') m.innerHTML=viewAcct4();
+  else if(tab==='month') m.innerHTML=viewMonth4();
   else m.innerHTML=viewSettings();
   if(animate){ m.classList.remove('anim','push'); void m.offsetWidth; m.classList.add(pushed?'push':'anim'); clearTimeout(render._t); render._t=setTimeout(()=>m.classList.remove('anim','push'),800); }
   if(!full) window.scrollTo(0,sy);
@@ -524,7 +526,7 @@ function viewTxShell(){
     <div class="a4-advf"><button class="w-chip" data-act="txCal" aria-pressed="${!!u.txCal}">${ic('calendar-blank')}Calendar</button><button class="w-chip" data-act="export">${ic('export')}Export CSV</button>${advOn?`<button class="w-chip" data-act="txClear">${ic('x')}Clear filters</button>`:''}</div></div>`:'';
   return `<div class="a4-head"><div class="w-title">Activity</div><button class="w-sq a4-advb${advOn?' on':''}" data-act="txAdv" aria-expanded="${!!u.txAdv}" aria-label="More filters">${ic('sliders-horizontal')}</button></div>
   <label class="a4-search">${ic('magnifying-glass')}<input type="search" data-input="txQ" value="${esc(u.txQ)}" placeholder="Search shops, notes, amounts" aria-label="Search" autocomplete="off"></label>
-  <div class="w-chips a4-f">${[['all','All'],['out','Spent'],['in','Received'],['bill','With bills']].map(([k,l])=>`<button class="w-chip" data-act="txF" data-v="${k}" aria-pressed="${(u.txF||'all')===k}">${l}</button>`).join('')}</div>
+  <div class="w-chips a4-f">${[['all','All'],['out','Spent'],['in','Received'],['tr','Transfers'],['bill','With bills']].map(([k,l])=>`<button class="w-chip" data-act="txF" data-v="${k}" aria-pressed="${(u.txF||'all')===k}">${l}</button>`).join('')}</div>
   ${adv}
   <div class="a4-sum"><div><span>Spent in ${Mn}</span>${nb(money(s.spent))}</div><div><span>Received in ${Mn}</span>${nb(`<span class="mi">${money(s.income)}</span>`)}</div></div>
   <div id="txCal"></div><div id="txSum" class="a4-note"></div><div id="txList"></div>`;
@@ -536,6 +538,7 @@ function renderTxList(){
   if(F==='out') list=list.filter(t=>t.type==='expense'&&!t.refund||t.type==='debt'&&t.dir==='give'||t.type==='invest'&&t.dir!=='sell');
   else if(F==='in') list=list.filter(t=>t.type==='income'||t.refund||t.type==='debt'&&t.dir!=='give'||t.type==='invest'&&t.dir==='sell');
   else if(F==='bill') list=list.filter(t=>t.lines&&t.lines.length||t.bill);
+  else if(F==='tr') list=list.filter(t=>t.type==='transfer');
   if(u.txType==='split') list=list.filter(t=>t.split); else if(u.txType==='itemized') list=list.filter(t=>t.lines&&t.lines.length); else if(u.txType!=='all') list=list.filter(t=>t.type===u.txType);
   if(u.txCat!=='all') list=list.filter(t=>t.catId===u.txCat||(t.lines||[]).some(l=>l.catId===u.txCat));
   if(q) list=list.filter(t=>norm([t.note,t.item,cat(t.catId).name,acctName(t.accountId),(t.tags||[]).map(x=>'#'+x).join(' '),(t.lines||[]).map(l=>l.name+' '+l.item).join(' '),t.personId?personName(t.personId):'',t.split?t.split.shares.map(s=>personName(s.who)).join(' '):'',t.investmentId?(holding(t.investmentId)||{}).name:'',String(t.amount),money(t.amount),t.fx?t.fx.orig+' '+t.fx.cur:''].join(' ')).includes(q));
@@ -589,7 +592,7 @@ function openTxView(id){
   const title=t.type==='transfer'?`${acctName(t.accountId)} → ${acctName(t.toAccountId)}`:r.title;
   const a=acct(t.accountId), aLab=a?[a.bank&&a.bank!==a.name&&a.bank!=='Other'&&a.bank!=='Cash'?a.bank:'',a.name].filter(Boolean).join(' · '):acctName(t.accountId);
   const tm=timeOf(t), pl=t.type==='expense'?placeOf(t):null;
-  const rows=[['Date',dayLabel(t.date)+(tm?', '+tm:'')],
+  const rows=[['Date',dayLabel(t.date)+(tm?', '+tm:'')],['Counts as',countsAs(t)],
     [t.type==='income'?'Into':t.type==='transfer'?'From':'Account',aLab],
     t.type==='transfer'?['To',acctName(t.toAccountId)]:null,
     t.type==='debt'?['Person',personName(t.personId)]:null,
@@ -622,12 +625,19 @@ function openTxView(id){
     ${bill}
     ${t.bill?more('receipt','Bill text',t.bill):''}
     ${t.sms?more('chat-text','Bank SMS',t.sms):''}
-    <div class="tv4-acts${t.type==='expense'?'':' two'}"><button data-act="rowDup" data-v="${esc(t.id)}">${ic('arrow-clockwise')}Again</button>${t.type==='expense'?`<button data-act="tvBill">${ic('receipt')}Bill</button>`:''}<button class="y" data-act="tvEdit">${ic('pencil-simple')}Edit</button></div>`,'','tv4');
+    <div class="tv4-acts${t.type==='expense'?'':' two'}"><button data-act="rowDup" data-v="${esc(t.id)}">${ic('arrow-clockwise')}Again</button>${t.type==='expense'?`<button data-act="tvBill">${ic('receipt')}Bill</button>`:''}<button class="y" data-act="tvEdit">${ic('pencil-simple')}Edit</button></div>
+    ${(t.type==='expense'||t.type==='income')&&!t.split&&!t.refund&&!nl&&P().accounts.length>1?`<button class="tv4-xfer" data-act="tvXfer">${ic('arrows-left-right')}${t.type==='expense'?'This was a transfer to my other account':'This came from my other account'}</button>`:''}`,'','tv4');
 }
 function openWhatsNew(){
   const row=(icon,t,d,act,btn,v)=>`<div class="wn4">${tileHTML({html:ic(icon),color:'#EDBB00'})}<div><b>${t}</b><p>${d}</p>${act?`<button class="w-pill card" data-act="${act}"${v?` data-v="${v}"`:''}>${btn}</button>`:''}</div></div>`;
-  sheet4(`<div class="bl4-h" style="padding:14px 20px 4px"><h3>What’s new in Masroof</h3></div><p class="hint" style="margin:0 20px 6px">Version <span data-notr>${APP_VERSION}</span> — a new look, the same private app.</p>
+  sheet4(`<div class="bl4-h" style="padding:14px 20px 4px"><h3>What’s new in Masroof</h3></div><p class="hint" style="margin:0 20px 6px">Version <span data-notr>${APP_VERSION}</span> — every account, and what each entry counts as.</p>
     <div class="wn4s">
+    ${row('arrows-left-right','Transfers between your accounts','When money leaves one of your accounts and arrives in another — even a day or two later — the two bank messages become one transfer. It isn’t counted as spending or income.','tab','Bank messages','sms')}
+    ${row('chat-text','Spending, income or a transfer?','A message that says “transfer” asks where it went: your other account, a friend, or spending. Credit card payments and cash deposits are recognised as money moved.')}
+    ${row('bank','A statement for each account','Tap an account to see money in and out this month, money moved, the balance after each entry, and whether it matches your bank.','tab','Accounts','accounts')}
+    ${row('chart-bar','This month','Income, spending, what you saved and what’s left, each budget, each account and what’s coming up.','goMonth','Open')}
+    ${row('info','What each entry counts as','Open any entry to see how it counts. If it was really a transfer to your other account, change it with one tap.')}
+    <p class="hint" style="margin:8px 4px 0">Also in 4.0</p>
     ${row('cards','A new design','Night and Day editions, your cards in a stack, a gold ＋ for adding, and everything one or two taps away.','tab','Open Settings','settings')}
     ${row('backspace','Add with a keypad','Type the amount on the keypad at the bottom of the sheet. Or write “karak 0.2 cash” or “coffee 15 aed” in What or where.','add','Add something')}
     ${row('chat-text','Bank messages, one card at a time','Swipe right to add a message, left to skip it, or confirm all the sure ones at once. Messages waiting are kept, encrypted, until you get to them.','tab','Open','sms')}
@@ -1249,11 +1259,14 @@ function banksIn(text,sender){ const n=norm(text), sn=norm(sender||'').replace(/
 function acctsForBankText(s,sender){ const banks=banksIn(s,sender); return P().accounts.filter(a=>banks.some(b=>norm(a.bank)===norm(b))); }
 const RE_SKIP=/\botp\b|one.?time|password|passcode|verification|declined|unsuccessful|\bfailed\b|insufficient|will be (?:debited|charged)|minimum (?:amount )?due|payment due|due date|رمز|كلمة (?:المرور|السر)|مرفوض|فشل|لم تتم/i;
 const RE_PROMO=/\b(?:offers?|apply now|eligible|win|chance to|promo(?:tion)?|t&c|terms (?:and conditions )?apply|valid (?:till|until))\b|عرض خاص|اربح/i;
-const RE_IN_FIRST=/payment[^.]{0,40}received|received[^.]{0,30}payment|thank you for (?:your )?payment|تم استلام (?:ال)?دفع/i; // a payment INTO a credit card
+const RE_IN_FIRST=/payment(?:[^.]|\.\d){0,40}received|received(?:[^.]|\.\d){0,30}payment|thank you for (?:your )?payment|تم استلام (?:ال)?دفع/i; // a payment INTO a credit card
 const RE_OUT=/\bdebit(?:ed)?\b|(?<!dear )\bdr\b\.?|withdr[ae]wn|withdrawal|deducted|purchase[ds]?|\bspent\b|\bused\b|\bpaid\b|payment|\bpos\b|e-?commerce|charged|\bsent\b|transferred (?:from|to (?!your))|transfer to|from your (?:a\/c|account|card)|خصم|شراء|سحب|دفع|مدين|سداد|صادر|تحويل إلى|حوالة صادرة/i;
 const RE_IN=/\bcredit(?:ed)?\b|\bcr\b\.?|deposit(?:ed)?|received|salary|incoming|cash\s*back|transferred to your|added to|to your (?:a\/c|account)|إيداع|ايداع|أودع|اودع|استلام|راتب|إضافة|اضافة|أضيف|اضيف|دائن|وارد/i;
 const RE_REFUND=/refund|reversal|reversed|مسترد|استرداد|عكس/i;
 const RE_ATM=/\batm\b|cash withdrawal|سحب نقدي|صراف/i;
+const RE_XFER=/\btransfer(?:red)?\b|\btrf\b|\bi?bft\b|\bown account\b|\bremittance\b|\bsent to\b|\breceived from\b|تحويل|حوالة|محو[ّ]?ل/i;
+const RE_CARDPAY=/(?:credit\s*)?card\s*(?:bill\s*)?payment|payment\s*(?:to|for|towards)\s*(?:your\s*)?(?:credit\s*)?card|سداد\s*(?:ال)?بطاقة/i;
+const RE_CASHDEP=/cash\s*deposit|\bcdm\b|deposit(?:ed)?\s*(?:in\s*)?cash|إيداع\s*نقدي|ايداع\s*نقدي/i;
 // what kind of message this is, without its numbers or shop: used to remember your answers
 const smsTpl=(s,merchant)=>norm(merchant?s.split(merchant).join(' @ '):s).replace(/\d[\d,.:\/\-]*/g,'#').replace(/[x*•]{2,}#?/gi,'#').replace(/\s+/g,' ').trim().slice(0,110);
 function smsMerchant(s){
@@ -1261,7 +1274,7 @@ function smsMerchant(s){
   const tidy=x=>x.replace(new RegExp(`\\s*(?<![\\p{L}])(?:${CUR_RE})\\s*\\d[\\d,.]*.*$`,'iu'),'').replace(/\s+(?:on|dated|for|via|using|ref.*)$/i,'').replace(/[\s\-–:]+$/,'').trim();
   for(const re of [/\b(?:pos|e-?com(?:merce)?|purchase)\s+(?!at\b|of\b|for\b|txn\b|transaction\b)([A-Za-z][A-Za-z0-9&'’.\-*\/ ]{1,40}?)(?=\s+(?:on|dated|for|via|ref|avl|avail|bal|card|a\/c)\b|[.,;:|()]|\s*$|\s+\d{1,2}[\/\-.])/i,
     /\b(?:at|@|merchant:?)\s+([A-Za-z0-9&'’.\-*\/ ]{2,40}?)(?=\s+(?:on|dated|for|with|using|via|ref|avl|avail|bal|card|a\/c|in|credited|debited|was|has|is|of|and)\b|[.,;:|()]|\s*$|\s+\d{1,2}[\/\-.])/i,
-    /\b(?:to|from)\s+([A-Za-z0-9&'’.\-*\/ ]{2,40}?)(?=\s+(?:on|dated|for|with|using|via|ref|avl|avail|bal|card|a\/c|credited|debited|was|has|is|of|and)\b|[.,;:|()]|\s*$|\s+\d{1,2}[\/\-.])/i,
+    /\b(?:to|from)\s+([A-Za-z0-9&'’.\-*\/ ]{2,40}?)(?=\s+(?:on|dated|for|with|using|via|ref|avl|avail|bal|card|a\/c|credited|debited|was|has|is|of|and|(?:from|to)\s+(?:your|a\/c|acc))\b|[.,;:|()]|\s*$|\s+\d{1,2}[\/\-.])/i,
     /(?:لدى|عند|في محل|لصالح|من|إلى|الى)\s+([^.،,؛:\d()]{2,40}?)(?=\s+(?:بتاريخ|في\s|يوم|رصيد|الرصيد|بمبلغ)|[.،,؛()]|$)/]){
     for(const m of s.matchAll(new RegExp(re.source,re.flags+'g'))){ const x=tidy(m[1]); if(x.length>1&&!bad.test(x)&&!/^\d/.test(x)&&!curCode(x)) return x; } }
   return '';
@@ -1315,17 +1328,28 @@ function parseSms(c,ctx){
   if(!accountId){ const sp=P().accounts.find(a=>hasRole(a,type==='income'?'salary':'spending')&&a.type!=='card'&&a.type!=='cash')||P().accounts[0]; accountId=sp.id; how='guess'; }
   // with the account known, the balance also settles money in or out
   if(type!=='transfer'&&balA&&how!=='balance'){ const a=acct(accountId); if(a){ if(fitBal(a,'expense')&&!fitBal(a,'income')){ if(type!=='expense'||!refund){ type='expense'; } known=true; } else if(fitBal(a,'income')&&!refund){ type='income'; known=true; } } }
+  // a payment INTO a credit card is money moved from one of your accounts, not income
+  let balAcct=null; { const A=acct(accountId);
+    if(type!=='transfer'&&!refund&&A&&A.type==='card'&&(type==='income'||RE_IN_FIRST.test(s))){ const from=P().accounts.find(x=>x.type!=='card'&&x.type!=='cash'&&x.bank&&norm(x.bank)===norm(A.bank||'')&&hasRole(x,'salary'))||P().accounts.find(x=>x.type!=='card'&&x.type!=='cash'&&hasRole(x,'salary'))||P().accounts.find(x=>x.type==='bank');
+      if(from){ type='transfer'; toAccountId=A.id; accountId=from.id; how='cardpay'; known=true; merchant='Card payment'; balAcct=A.id; } }
+    else if(type==='expense'&&!refund&&A&&A.type!=='card'&&RE_CARDPAY.test(s)){ const cards=P().accounts.filter(x=>x.type==='card'); const c=cards.length===1?cards[0]:cards.find(x=>x.bank&&norm(x.bank)===norm(A.bank||''));
+      if(c){ type='transfer'; toAccountId=c.id; known=true; merchant='Card payment'; } }
+    else if(type==='income'&&A&&A.type!=='cash'&&RE_CASHDEP.test(s)){ const cash=P().accounts.find(x=>x.type==='cash'); if(cash){ type='transfer'; toAccountId=A.id; accountId=cash.id; how=how==='guess'?'guess':'cashdep'; merchant='Cash deposit'; known=true; balAcct=A.id; } } }
+  // "transfer", "sent to", "received from" with no second account of yours: to one of your accounts elsewhere, to someone, or a payment? You decide
+  const xfer=type!=='transfer'&&!refund&&!RE_ATM.test(s)&&RE_XFER.test(s)?(type==='expense'?'out':'in'):null;
+  if(xfer&&!(L&&L.t)) known=false;
+  if(xfer&&/^(?:your |my )?own (?:account|a\/c)/i.test(merchant)) merchant='Transfer';
   if(type!=='transfer'&&!refund&&RE_ATM.test(s)){ const cash=P().accounts.find(a=>a.type==='cash'&&a.id!==accountId); merchant=merchant&&!/atm/i.test(merchant)?'ATM · '+merchant:'ATM withdrawal'; if(cash&&type==='expense'){ type='transfer'; toAccountId=cash.id; } }
   if(type==='income'&&/salary|راتب/i.test(s)) merchant='Salary';
   if(!merchant) merchant=type==='transfer'?'Transfer':type==='income'?'Deposit':refund?'Refund':'Card payment';
   const g=type==='transfer'?null:(guessCategory(merchant,type)||guessCategory(s,type));
-  const acA=acct(accountId), bal=acA?balVal(acA):null;
+  const acA=acct(balAcct||accountId), bal=acA?balVal(acA):null;
   // count this one so the next message's balance check starts from the right place
   const eff=type==='income'||(type==='expense'&&refund)?amount:-amount;
   const pend=(id,v)=>{ const a=acct(id); if(a&&afterAnchor(a)) ctx.pend[id]=(ctx.pend[id]||0)+v; };
   if(type==='transfer'){ pend(accountId,-amount); if(toAccountId) pend(toAccountId,amount); } else pend(accountId,eff);
-  if(bal!=null) ctx.last[accountId]=bal;
-  return {text:s.slice(0,300),sender:(c.sender||'').slice(0,40),on:known,date,at:c.at||null,type,amount,merchant,catId:g?g.catId:(type==='income'?'inc_other':'other'),item:g&&g.item||'',accountId,toAccountId,acctSure:how!=='guess',how,tpl,
+  if(bal!=null) ctx.last[acA.id]=bal;
+  return {text:s.slice(0,300),sender:(c.sender||'').slice(0,40),on:known,date,at:c.at||null,type,amount,merchant,catId:g?g.catId:(type==='income'?'inc_other':'other'),item:g&&g.item||'',accountId,toAccountId,acctSure:how!=='guess'&&how!=='cardpay',how,balAcct,tpl,xfer,
     nums,fx,fxEst,estAmt:fxEst?amount:null,ctry,refund,bal,balKind:balA?balA.kind:null,unsure:!known};
 }
 function localParse(text){
@@ -1333,13 +1357,30 @@ function localParse(text){
   for(const c of smsChunks(text)){ const key=fingerprint((c.stamp||'')+'|'+c.body); if(seen.has(key)){ skipped++; continue; } seen.add(key);
     const r=parseSms(c,ctx); if(r){ r.key=key; rows.push(r); } else rows.push({key,skip:true}); }
   const keys=rows.map(r=>r.key); const out=rows.filter(r=>!r.skip);
-  // an expense from one of your accounts and income into another, same amount and day: one transfer
+  // money out of one of your accounts and into another for the same amount is one transfer: the same day,
+  // or up to two days apart when either message talks about a transfer
+  const near=(x,y,days)=>Math.abs(dayDiff(x,y))<=days, xferText=r=>RE_XFER.test(r.text||'');
+  const pair=(e,i)=>{ e.type='transfer'; e.toAccountId=i.accountId; e.merchant=!e.merchant||e.merchant==='Transfer'||e.xfer?'Transfer':e.merchant; e.xfer=null; e.unsure=false; e.on=true; i.pairedWith=e; e.pairedWith=i; if(i.bal!=null) e.toBal=i.bal; };
   for(const e of out) if(e.type==='expense'&&!e.refund&&e.acctSure&&!e.pairedWith) for(const i of out)
-    if(i.type==='income'&&i.acctSure&&!i.pairedWith&&i.accountId!==e.accountId&&i.date===e.date&&Math.abs(i.amount-e.amount)<1e-9){ e.type='transfer'; e.toAccountId=i.accountId; e.merchant=e.merchant==='Transfer'||!e.merchant?'Transfer':e.merchant; i.pairedWith=e; e.pairedWith=i; if(i.bal!=null) e.toBal=i.bal; break; }
+    if(i.type==='income'&&i.acctSure&&!i.pairedWith&&i.accountId!==e.accountId&&Math.abs(i.amount-e.amount)<1e-9&&(i.date===e.date||near(i.date,e.date,2)&&(xferText(i)||xferText(e)))){ pair(e,i); break; }
+  // or the other half is already in Masroof (added by hand, or from an earlier import)
+  const ex=allTx().filter(t=>(t.type==='expense'||t.type==='income')&&!t.split&&!t.refund&&!(t.lines&&t.lines.length));
+  for(const r of out){ if(r.pairedWith||!(r.type==='expense'||r.type==='income')||r.refund||!r.acctSure||!(r.xfer||xferText(r))) continue;
+    const want=r.type==='expense'?'income':'expense';
+    const t=ex.find(t=>t.type===want&&t.accountId!==r.accountId&&acct(t.accountId)&&Math.abs(t.amount-r.amount)<1e-9&&near(t.date,r.date,2)&&!out.some(o=>o.pairTx===t.id));
+    if(!t) continue;
+    r.balAcct=r.accountId; if(r.type==='expense'){ r.toAccountId=t.accountId; } else { r.toAccountId=r.accountId; r.accountId=t.accountId; }
+    r.type='transfer'; r.pairTx=t.id; r.merchant='Transfer'; r.xfer=null; r.unsure=false; r.on=true; }
+  // a card payment shows up twice (the bank's message and the card's): keep one; skip it if it's already in Masroof
+  const tx0=allTx().filter(t=>t.type==='transfer');
+  for(const r of out){ if(r.how!=='cardpay'||r.type!=='transfer') continue;
+    const o=out.find(o=>o!==r&&!o.gone&&o.type==='transfer'&&o.toAccountId===r.toAccountId&&Math.abs(o.amount-r.amount)<1e-9&&near(o.date,r.date,2));
+    if(o){ r.gone=true; if(r.bal!=null) o.toBal=r.bal; continue; }
+    if(tx0.some(t=>t.toAccountId===r.toAccountId&&Math.abs(t.amount-r.amount)<1e-9&&near(t.date,r.date,2))){ r.dup=true; r.on=false; } }
   imp.seen=skipped; imp.keys=keys; imp.skipKeys=rows.filter(r=>r.skip).map(r=>r.key); // skipKeys: OTPs and other non-transactions
-  return markDups(out.filter(r=>!(r.type==='income'&&r.pairedWith)));
+  return markDups(out.filter(r=>!r.gone&&!(r.type==='income'&&r.pairedWith)));
 }
-function markDups(rows){ const ex=allTx(); for(const r of rows){ r.dup=ex.some(t=>t.date===r.date&&Math.abs(t.amount-r.amount)<1e-6&&!t.smsKey); if(r.dup) r.on=false; } return rows; }
+function markDups(rows){ const ex=allTx(); for(const r of rows){ r.dup=r.dup||!r.pairTx&&ex.some(t=>t.date===r.date&&Math.abs(t.amount-r.amount)<1e-6&&!t.smsKey); if(r.dup) r.on=false; } return rows; }
 // ready to add with no questions: account known, clearly a payment or deposit (other currencies are converted)
 const autoOK=r=>r.on&&r.acctSure&&!r.unsure&&!r.dup&&(!r.fx||r.amount>0);
 function readSmsFile(file){
@@ -1352,11 +1393,24 @@ function readSmsFile(file){
 }
 // messages already handled are skipped next time; ones still waiting for review are not
 function rememberSeen(keys){ const P_=P(); const s=P_.smsSeen||(P_.smsSeen=[]); for(const k of keys||imp.keys||[]) if(k&&!s.includes(k)) s.push(k); if(s.length>5000) s.splice(0,s.length-5000); }
+// an entry turned into a transfer keeps its note unless it's one Masroof made up
+const xferNote=n=>!n||/^(?:Deposit|Card payment|Transfer|Refund)$/.test(n)?'Transfer':n;
+// put a saved copy of an entry back in place of its changed version
+function putBack(keep){ for(const [k,arr] of Object.entries(state.months)){ const i=arr.findIndex(t=>t.id===keep.id); if(i>=0){ arr.splice(i,1); persistMonth(k); } }
+  const k=keep.date.slice(0,7); (state.months[k]||(state.months[k]=[])).push(keep); persistMonth(k); }
 function addImported(rows,close,reviewed,opt={}){
   const touched=new Set(); const ids=[]; const p=P(); const synced=new Set();
+  const restore=[]; // entries already in Masroof that a message turned into a transfer
   for(const r of rows){ const amount=round(num(r.amount),dec()); if(!(amount>0)) continue;
+    // the other half of this transfer is already recorded: make that entry the transfer
+    if(r.type==='transfer'&&r.pairTx){ const old=allTx().find(t=>t.id===r.pairTx);
+      if(old&&r.toAccountId&&r.toAccountId!==r.accountId){ const k0=old.date.slice(0,7), keep=clone(old); restore.push(keep);
+        old.type='transfer'; old.accountId=r.accountId; old.toAccountId=r.toAccountId; delete old.catId; delete old.item; delete old.refund; old.note=xferNote(old.note);
+        if(r.text) old.sms=[old.sms,r.text].filter(Boolean).join('\n\n'); touched.add(k0);
+        const a=acct(r.balAcct); if(a&&r.bal!=null&&(!a.bankBal||a.bankBal.date<=r.date)){ a.bankBal={v:r.bal,date:r.date,at:r.at||null,ts:Date.now()}; synced.add(a.id); } continue; } }
     const tx={id:newId(),type:r.type,amount,date:r.date,accountId:r.accountId,note:r.merchant,ts:Date.now(),imported:true,smsKey:r.key}; if(r.text) tx.sms=r.text;
     if(r.type==='transfer'){ if(!r.toAccountId||r.toAccountId===r.accountId) continue; tx.toAccountId=r.toAccountId; }
+    else if(r.type==='debt'){ if(!person(r.personId)) continue; tx.personId=r.personId; tx.debtKind=r.debtKind; tx.dir=DEBT_KIND[r.debtKind][0]; }
     else { tx.catId=r.catId; tx.item=r.item||''; if(r.refund&&r.type==='expense') tx.refund=true; }
     if(r.fx&&r.type!=='transfer'){ tx.fx={cur:r.fx.cur,orig:r.fx.orig,rate:fxRound(amount/r.fx.orig)}; if(r.fxEst&&amount===r.estAmt) tx.fx.est=true; }
     if(r.ctry) tx.ctry=r.ctry; if(r.at) tx.at=r.at;
@@ -1364,19 +1418,20 @@ function addImported(rows,close,reviewed,opt={}){
     // a message from before you set an account's current balance is already in that balance
     for(const id of [tx.accountId,tx.toAccountId]){ const a=acct(id); if(a&&a.anchor&&(r.at&&a.anchor.at?r.at<=a.anchor.at:r.date<a.anchor.date)) a.opening=round((+a.opening||0)-acctEffect(tx,id),dec()); }
     // remember how you answered for this kind of message
-    if(reviewed&&r.tpl&&r.type!=='transfer'){ const T=p.smsTpl||(p.smsTpl={}); T[r.tpl]={t:r.type,a:r.how==='number'?undefined:r.accountId}; const ks=Object.keys(T); if(ks.length>400) delete T[ks[0]]; } const k=r.date.slice(0,7);(state.months[k]||(state.months[k]=[])).push(tx);touched.add(k);
+    if(reviewed&&r.tpl&&r.type!=='transfer'&&r.type!=='debt'){ const T=p.smsTpl||(p.smsTpl={}); T[r.tpl]={t:r.type,a:r.how==='number'?undefined:r.accountId}; const ks=Object.keys(T); if(ks.length>400) delete T[ks[0]]; } const k=r.date.slice(0,7);(state.months[k]||(state.months[k]=[])).push(tx);touched.add(k);
     if(tx.catId){ const c=findCat(r.catId); if(c&&r.item&&!c.items.includes(r.item)) c.items.push(r.item); learn(r.merchant,r.catId,r.item); }
     // a new card number: remember which account it belongs to
-    if(r.nums&&r.nums.length&&!acctForNum(r.nums[0])){ const a=acct(r.accountId); if(a){ a.smsIds=[...new Set([...(a.smsIds||[]),r.nums[0]])]; } }
+    if(r.nums&&r.nums.length&&!acctForNum(r.nums[0])){ const a=acct(r.balAcct||r.accountId); if(a){ a.smsIds=[...new Set([...(a.smsIds||[]),r.nums[0]])]; } }
     // the balance the bank reported, to check Masroof against
     const note=(id,v)=>{ const a=acct(id); if(a&&v!=null&&(!a.bankBal||a.bankBal.date<r.date||a.bankBal.date===r.date&&(!r.at||!a.bankBal.at||r.at>=a.bankBal.at))){ a.bankBal={v,date:r.date,at:r.at||null,ts:Date.now()}; synced.add(id); } };
-    note(r.accountId,r.bal); if(r.toBal!=null) note(r.toAccountId,r.toBal);
+    note(r.balAcct||r.accountId,r.bal); if(r.toBal!=null) note(r.toAccountId,r.toBal);
   }
   rememberSeen(opt.keys||(reviewed?imp.keys:[...rows.map(r=>r.key),...(imp.skipKeys||[])])); const S=p.sms||(p.sms={}); S.last=Date.now(); S.count=(S.count||0)+ids.length;
   // the balance in the newest message is the truth: set each account's current balance to it
   const fixed=S.syncBal===false?[]:[...synced].map(id=>acct(id)).filter(a=>a&&syncToBank(a)!==null);
   touched.forEach(persistMonth); persist('profile'); if(close) $('#dlg').close(); if(ids.length) celebrate();
-  if(!opt.quiet) toast(ids.length?`${ids.length===1?'Added':`Imported ${ids.length} transactions`} from your bank${fixed.length?` · balance${fixed.length>1?'s':''} updated`:''}`:'Nothing to import',{undo:ids.length?()=>{removeIds(ids); if(opt.undo) opt.undo(); render();}:null}); render();
+  const n=ids.length+restore.length, back=()=>{ removeIds(ids); for(const k of restore) putBack(k); if(opt.undo) opt.undo(); render(); };
+  if(!opt.quiet) toast(n?`${n===1?(restore.length?'Matched as a transfer':'Added'):`Imported ${n} transactions`} from your bank${fixed.length?` · balance${fixed.length>1?'s':''} updated`:''}`:'Nothing to import',{undo:n?back:null}); render();
 }
 /* ================= spending map =================
    Where each expense happened: the exact spot when "Remember where I spend" is on (stored
@@ -1708,7 +1763,6 @@ const lum=h=>{const [r,g,b]=hexRgb(h).map(v=>{v/=255;return v<=.03928?v/12.92:((
 const accColor=a=>a&&a.color||TYPE_COLOR[a&&a.type]||'#0A8F5B';
 function accGrad(c){ const dark=lum(c)<.03; const c2=dark?mix(c,'#ffffff',.22):mix(c,'#000000',.42); const c3=dark?mix(c,'#ffffff',.08):mix(c,'#ffffff',.12);
   return `radial-gradient(90% 80% at 100% 0%,${c3} 0%,transparent 60%),linear-gradient(145deg,${c} 0%,${c2} 100%)`; }
-const accInk=c=>lum(c)>.45?'#0B1220':'#FFFFFF';
 const hasRole=(a,r)=>!!a&&((a.roles||[]).includes(r)||(r==='savings'&&a.type==='savings'));
 function accFlows(list,id){ // money into / out of one account
   let inn=0,out=0;
@@ -1721,29 +1775,6 @@ function accFlows(list,id){ // money into / out of one account
   }
   return {inn,out};
 }
-function balanceSeries(id,days){ // end-of-day balance for the last N days
-  const b=balances(); let bal=id==='all'?sum(P().accounts,a=>b[a.id]||0):(b[id]||0);
-  const out=[]; const byDay={};
-  const from=ymd(addDays(new Date(),-days+1));
-  for(const t of txBetween(from,todayStr())){ let d=0;
-    const f=(aid,v)=>{ if(id==='all'||aid===id) d+=v; };
-    if(t.type==='expense'){ if(paidByMe(t)) f(t.accountId,t.refund?t.amount:-t.amount); }
-    else if(t.type==='income') f(t.accountId,t.amount);
-    else if(t.type==='transfer'){ f(t.accountId,-t.amount); f(t.toAccountId,t.amount); }
-    else if(t.type==='debt') f(t.accountId,t.dir==='give'?-t.amount:t.amount);
-    else if(t.type==='invest') f(t.accountId,t.dir==='sell'?t.amount:-t.amount);
-    byDay[t.date]=(byDay[t.date]||0)+d; }
-  for(let i=0;i<days;i++){ const k=ymd(addDays(new Date(),-i)); out.unshift(bal); bal-=byDay[k]||0; }
-  return out;
-}
-function sparkSVG(vals,color){
-  const W=300,H=64,min=Math.min(...vals),max=Math.max(...vals),r=max-min||1;
-  const pts=vals.map((v,i)=>[i*(W/(vals.length-1||1)),6+(H-12)*(1-(v-min)/r)]);
-  const d='M'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L');
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block"><defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".45"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
-    <path d="${d} L${W},${H} L0,${H} Z" fill="url(#sg)"/><path d="${d}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" pathLength="1" class="spark"/></svg>`;
-}
-function roleChips(a,light){ return (a.roles||[]).map(r=>{const x=ROLES.find(z=>z[0]===r); return x?`<span class="rchip">${x[1]}</span>`:''}).join(''); }
 /* credit card: statement, amount due, minimum and available credit */
 const dayIn=(y,m,d)=>new Date(y,m,Math.min(d,new Date(y,m+1,0).getDate()));
 function cardStatus(a){
@@ -1759,16 +1790,6 @@ function cardStatus(a){
   const next=dayIn(st.getFullYear(),st.getMonth()+1,a.stmtDay);
   return {...out,stmt:stS,stmtOwed,paid:round(paid,dec()),due,minimum,dueDate:ymd(dd),nextStmt:ymd(next),late:due>0&&ymd(dd)<todayStr()};
 }
-function cardPanelHTML(a){
-  const c=cardStatus(a); if(!c) return '';
-  if(!a.stmtDay&&!a.limit) return `<button class="bankchk" data-act="editAcct" data-v="${esc(a.id)}"><span class="bk-i" style="background:var(--save)">i</span><span><b>Add your card’s details</b><br><span class="muted">Credit limit, statement day and due day — to see what to pay and when.</span></span></button>`;
-  const bar=c.util!=null?`<div class="util"><i style="width:${Math.min(100,c.util*100)}%;background:${c.util>.8?'var(--spend)':c.util>.5?'var(--warn)':'var(--earn)'}"></i></div><div class="util-cap"><span>${Math.round(c.util*100)}% of limit used</span><span>${money(c.avail)} available</span></div>`:'';
-  return `<div class="panel cardst"><div class="panel-h" style="margin-bottom:6px"><h2 style="font-size:16px">Card statement</h2>${c.stmt?`<span class="hint">closed ${shortD(c.stmt)} · next ${shortD(c.nextStmt)}</span>`:''}</div>
-    ${c.stmt?`<div class="cs-due${c.late?' late':c.due>0?'':' paid'}"><div><small>${c.due>0?(c.late?'Overdue since':'Pay by'):'Statement'}</small><b>${c.due>0?fmtD(c.dueDate,{weekday:'short',day:'numeric',month:'short'}):c.stmtOwed>0?'Paid ✓':'Nothing owed'}</b></div>
-      <div style="text-align:right"><small>${c.due>0?'Left to pay':'Statement balance'}</small><b>${money(c.due>0?c.due:c.stmtOwed)}</b></div></div>
-      <div class="fc-rows" style="margin-top:8px">${[['Statement balance',money(c.stmtOwed)],['Paid since statement',money(c.paid)],['Minimum payment',money(c.minimum)],['Owed right now',money(c.owedNow)]].map(([l,v])=>`<div class="fc-r"><span>${l}</span><b>${v}</b></div>`).join('')}</div>`:''}
-    ${bar}${c.due>0?`<button class="btn primary wide" data-act="cardPay" data-v="${esc(a.id)}" style="margin-top:12px">Pay ${money(c.due)} ${esc(cur())}</button>`:''}</div>`;
-}
 // how a transaction changes one account's balance
 function acctEffect(t,id){ let d=0; const f=(aid,v)=>{ if(aid===id) d+=v; };
   if(t.type==='expense'){ if(paidByMe(t)) f(t.accountId,t.refund?t.amount:-t.amount); }
@@ -1782,27 +1803,7 @@ function balAtBank(a){ const bb=a.bankBal; return (balances()[a.id]||0)-sum(allT
 // make an account's balance match the bank's last message; returns the change, or null if none was needed
 function syncToBank(a){ if(!a.bankBal||a.bankBal.v==null) return null; const diff=round(a.bankBal.v-balAtBank(a),dec());
   a.anchor={date:a.bankBal.date,at:a.bankBal.at||null}; if(Math.abs(diff)<10**-dec()) return null; a.opening=round((+a.opening||0)+diff,dec()); return diff; }
-function bankCheckHTML(a,now){
-  if(!a.bankBal) return ''; const mine=balAtBank(a); // Masroof's balance when the bank last reported it
-  const diff=round(a.bankBal.v-mine,dec()); const ok=Math.abs(diff)<10**-dec();
-  return `<div class="bankchk${ok?' ok':''}"><span class="bk-i">${ok?'✓':'!'}</span><span><b>${ok?'Matches your bank':'Your bank says '+money(a.bankBal.v)}</b><br><span class="muted">${ok?`Bank balance ${money(a.bankBal.v)} on ${shortD(a.bankBal.date)}`:`On ${shortD(a.bankBal.date)} · Masroof shows ${money(mine)} (${money(-diff,{sign:true})})`}</span></span>${ok?'':`<button class="btn small primary" data-act="bankFix" data-v="${esc(a.id)}">Match</button>`}</div>`;
-}
 /* account detail sheet */
-function openAccountSheet(id){
-  const a=acct(id); if(!a) return; const c=accColor(a); const b=balances(); const [ma,mb]=periodRange('month',todayStr());
-  const fl=accFlows(txBetween(ma,mb),id); const ser=balanceSeries(id,30);
-  const recent=allTx().filter(t=>t.accountId===id||t.toAccountId===id).sort((x,y)=>x.date===y.date?(y.ts||0)-(x.ts||0):(x.date<y.date?1:-1)).slice(0,6);
-  const spentHere=sum(txBetween(ma,mb).filter(t=>t.type==='expense'&&t.accountId===id&&paidByMe(t)),t=>t.refund?-t.amount:t.amount);
-  fd={kind:'accview',id};
-  dlg(esc(a.name),`<div class="acard big" style="background:${accGrad(c)};color:${accInk(c)}"><span class="achip"></span><span class="abank">${esc(a.bank||TYPE_LABEL[a.type])}</span><span class="aname">${esc(a.name)}${a.last4?` · •••• ${esc(a.last4)}`:''}</span><span class="abal"><small>${esc(cur())}</small>${money(b[id]||0)}</span><span class="aroles">${roleChips(a)}</span></div>
-    <div class="panel" style="padding:14px"><div class="panel-h" style="margin-bottom:4px"><h2 style="font-size:16px">Last 30 days</h2><span class="hint">${money(ser[0])} → ${money(ser[ser.length-1])}</span></div>${sparkSVG(ser,lum(c)<.03?'var(--ink)':c)}</div>
-    <div class="two"><div class="panel" style="padding:14px"><span class="hint">In this month</span><div style="font:800 22px var(--display);color:var(--earn)">${fl.inn?'+':''}${money(fl.inn)}</div></div><div class="panel" style="padding:14px"><span class="hint">Out this month</span><div style="font:800 22px var(--display);color:var(--spend)">${fl.out?'−':''}${money(fl.out)}</div></div></div>
-    ${cardPanelHTML(a)}${bankCheckHTML(a,b[id]||0)}
-    ${hasRole(a,'savings')&&spentHere>0?`<p class="hint" style="color:var(--warn);font-weight:600">⚠️ ${money(spentHere)} was spent directly from this savings account this month.</p>`:''}
-    <div class="chips"><button class="chip" data-act="accAdd" data-v="${esc(id)}">＋ Expense from here</button><button class="chip" data-act="accIncome" data-v="${esc(id)}">＋ Money in</button><button class="chip" data-act="accMove" data-v="${esc(id)}">↔ Move money</button><button class="chip" data-act="accShow" data-v="${esc(id)}">Show on Home</button></div>
-    <div class="field"><span class="lab">Recent</span>${recent.length?`<div class="tx-group">${recent.map(txRow).join('')}</div>`:'<p class="hint">Nothing yet.</p>'}</div>`,
-    `<span class="spacer"></span><button class="btn" data-act="editAcct" data-v="${esc(id)}">Edit card</button><button class="btn primary" data-act="close">Done</button>`);
-}
 /* add several accounts in one go */
 const nextCardColor=(skip=[])=>{ const used=new Set([...P().accounts.map(a=>(a.color||'').toLowerCase()),...skip]); return (CARD_COLORS.find(([,c])=>!used.has(c.toLowerCase()))||CARD_COLORS[(P().accounts.length+skip.length)%CARD_COLORS.length])[1]; };
 const blankBulk=()=>({type:'bank',bank:'',name:'',last4:'',opening:'',limit:'',stmtDay:'',dueDay:''});
@@ -1928,7 +1929,7 @@ document.addEventListener('click',async e=>{
   switch(a){
     /* navigation & home */
     case 'tab': go4(v); break;
-    case 'back': go4(u.back&&!PUSH4.includes(u.back)?u.back:'home'); break;
+    case 'back': if(u.tab==='acct'&&u.acctFrom){ const f=u.acctFrom; u.acctFrom=null; go4(f); break; } if(u.tab==='month'&&u.monthFrom){ const f=u.monthFrom; u.monthFrom=null; go4(f); break; } go4(u.back&&!PUSH4.includes(u.back)?u.back:'home'); break;
     case 'rowDup': closeRow(); if(fd&&fd.kind==='txview'&&$('#dlg').open) $('#dlg').close(); duplicateTx(v); break;
     case 'rowNoop': break;
     case 'txCal': u.txCal=!u.txCal; u.txDay=null; if(u.txCal&&(!u.txM||u.txM==='all')) u.txM=u.txMonth=todayStr().slice(0,7); buzz(5); { const y=window.scrollY; render(); window.scrollTo(0,y); } break;
@@ -1956,6 +1957,13 @@ document.addEventListener('click',async e=>{
     case 'billPaste': try{ const t=await navigator.clipboard.readText(); if(draft&&t){ draft._billText=t; renderTxDlg(); } else toast('Nothing to paste'); }catch(e){ toast('Long-press the box and tap Paste'); } break;
     case 'billRead': if(draft) readBill(draft); break;
     case 'tvBill': { const id=fd&&fd.id; $('#dlg').innerHTML=''; openTx(id); if(draft){ draft._billOpen=true; renderTxDlg(); } break; }
+    case 'tvXfer': { const t=allTx().find(x=>x.id===(fd&&fd.id)); if(!t) break; const others=p.accounts.filter(a=>a.id!==t.accountId);
+      sheet4(`<div class="bl4-h" style="padding:14px 20px 4px"><h3>${t.type==='expense'?'Moved to which account?':'Came from which account?'}</h3></div><p class="hint" style="margin:0 20px 10px">It will count as money moved between your accounts — not spending or income.</p>
+        <div class="gn-rows">${others.map(a=>`<button data-act="tvXferTo" data-v="${esc(a.id)}"><i class="cc" style="background:${cardBg(accColor(a))}"></i><span><b>${esc(a.name)}</b><small>${esc([a.bank,TYPE_LABEL[a.type]].filter(Boolean).join(' · '))}</small></span>${chevI()}</button>`).join('')}</div>`,'','xf4'); break; }
+    case 'tvXferTo': { const t=allTx().find(x=>x.id===(fd&&fd.id)); if(!t) break; const keep=clone(t);
+      if(t.type==='expense') t.toAccountId=v; else { t.toAccountId=t.accountId; t.accountId=v; }
+      t.type='transfer'; delete t.catId; delete t.item; delete t.refund; t.note=xferNote(t.note); persistMonth(t.date.slice(0,7)); $('#dlg').close();
+      toast('Now a transfer between your accounts',{undo:()=>{ putBack(keep); render(); }}); render(); break; }
     case 'tvEdit': $('#dlg').innerHTML=''; openTx(fd&&fd.id); break;
     /* tx dialog */
     case 'edit': openTx(v); break;
@@ -2001,11 +2009,15 @@ document.addEventListener('click',async e=>{
       { const back=fd.back, isNew=!fd.id; persist('profile'); toast(isNew?'Account added. Your others are unchanged.':'Saved'); render(); if(back==='hub') openBulk(); else { $('#dlg').close(); celebrate(); } } break; }
     case 'accColor': fd.color=v; fd._colorSet=true; renderAcctEditor(!!fd.id); break;
     case 'accRole': fd.roles=fd.roles.includes(v)?fd.roles.filter(r=>r!==v):[...fd.roles,v]; renderAcctEditor(!!fd.id); break;
-    case 'accView': openAccountSheet(v); break;
+    case 'accView': if($('#dlg').open) $('#dlg').close(); u.acctFrom=PUSH4.includes(u.tab)&&u.tab!=='acct'?u.tab:u.acctFrom; u.acctId=v; u.acctF='all'; u.acctN=60; go4('acct'); break;
+    case 'goMonth': u.monthFrom=PUSH4.includes(u.tab)&&u.tab!=='month'?u.tab:null; u.mAnchor=todayStr(); go4('month'); break;
+    case 'mShift': { const n=shiftAnchor('month',u.mAnchor||todayStr(),+v); if(n<=todayStr()||+v<0){ u.mAnchor=n; render(); window.scrollTo(0,0); } break; }
+    case 'seeTx': Object.assign(u,{txType:'all',txCat:v,acct:'all',txM:(u.mAnchor||todayStr()).slice(0,7),txCal:false,txDay:null,txF:'all',txQ:'',txAdv:true,txN:60}); go4('tx'); break;
+    case 'acctF': u.acctF=v; { const y=window.scrollY; render(); window.scrollTo(0,y); } break;
+    case 'acctMore': u.acctN=(u.acctN||60)+60; { const y=window.scrollY; render(); window.scrollTo(0,y); } break;
     case 'accAdd': openTx(null,{accountId:v}); break;
     case 'accIncome': openTx(null,{type:'income',accountId:v}); break;
     case 'accMove': openTx(null,{type:'transfer',accountId:v,toAccountId:(p.accounts.find(x=>x.id!==v&&hasRole(x,'savings'))||p.accounts.find(x=>x.id!==v)||{}).id}); break;
-    case 'accShow': $('#dlg').close(); u.acct=v; u.tab='home'; render(); window.scrollTo(0,0); break;
     case 'pickAcct': u.acct=v; buzz(6); { const y=window.scrollY; render(); window.scrollTo(0,y); } break;
     case 'aDelete': { if(p.accounts.length<2) return fErr('Keep at least one account.'); const used=allTx().some(t=>t.accountId===fd.id||t.toAccountId===fd.id);
       if(await ask(used?'This account has transactions. They stay in your history. Delete it?':'Delete this account?','Delete')){ p.accounts=p.accounts.filter(x=>x.id!==fd.id); if(u.acct===fd.id) u.acct='all'; const back=fd.back; persist('profile'); render(); if(back==='hub') openBulk(); else $('#dlg').close(); } break; }
@@ -2069,11 +2081,16 @@ document.addEventListener('click',async e=>{
     case 'smsNo': smsFly(false); break;
     case 'smsSure': { const Q=p.smsQueue||[], rows=Q.filter(sureRow); if(!rows.length) break; p.smsQueue=Q.filter(r=>!rows.includes(r)); u.smsDone=(u.smsDone||0)+rows.length; if(!p.smsQueue.length) u.drop=true;
       addImported(rows.map(r=>({...r,on:true})),false,true,{keys:rows.map(r=>r.key),undo:()=>{ p.smsQueue=[...rows,...(p.smsQueue||[])]; u.smsDone=Math.max(0,u.smsDone-rows.length); p.smsSeen=(p.smsSeen||[]).filter(k=>!rows.some(r=>r.key===k)); persist('profile'); }}); break; }
-    case 'smsType': smsEdit(r=>{ const was=r.type; r.unsure=false; r.refund=false;
+    case 'smsType': smsEdit(r=>{ const was=r.type, wasOut=was==='debt'?DEBT_KIND[r.debtKind][0]==='give':was==='expense'||was==='transfer'; r.unsure=false; r.refund=false; r.xfer=null;
+      if(v==='fr'){ r.type='debt'; r.debtKind=wasOut?'lent':'repaid_in'; if(!person(r.personId)) r.personId=(p.people[0]||{}).id||''; return; }
       if(v==='tr'){ r.type='transfer'; if(!r.toAccountId||r.toAccountId===r.accountId) r.toAccountId=(p.accounts.find(a=>a.id!==r.accountId)||{}).id; }
       else { r.type=v==='in'?'income':'expense'; if(was!==r.type){ const g=guessCategory(r.merchant,r.type); r.catId=g?g.catId:(r.type==='income'?'inc_other':'other'); r.item=g&&g.item||''; } } }); break;
     case 'smsAcct': smsEdit(r=>{ r[el.dataset.field||'accountId']=v; if((el.dataset.field||'accountId')==='accountId'){ r.acctSure=true; r.how='you'; } }); break;
     case 'smsCat': smsEdit(r=>{ r.catId=v; r.item=''; }); u.smsAllCats=false; break;
+    case 'smsXferOk': smsEdit(r=>{ r.xfer=null; r.unsure=false; }); break;
+    case 'smsPerson': smsEdit(r=>{ r.personId=v; }); break;
+    case 'smsKind': smsEdit(r=>{ r.debtKind=v; }); break;
+    case 'smsAddPerson': { const id=addPerson(($('#smsNewPerson')||{}).value); if(id) smsEdit(r=>{ r.personId=id; }); break; }
     case 'smsAllCats': u.smsAllCats=true; { const sc=window.scrollY; render(); window.scrollTo(0,sc); } break;
     case 'smsFile': $('#smsFile').click(); break;
     case 'smsAuto': { const S=p.sms||(p.sms={}); S.auto=!S.auto; persist('profile'); render(false); toast(S.auto?'Bank messages you can trust will be added without asking':'You’ll check every imported message first'); break; }
@@ -2092,7 +2109,7 @@ document.addEventListener('click',async e=>{
     case 'smsDone': { const S=p.sms||(p.sms={}); S.setup=true; persist('profile'); $('#dlg').close(); render(false); toast('Great — tap “Import bank SMS” whenever you like'); break; }
     case 'smsCopy': { const ok=await copyText(v); toast(ok?'Copied':'Couldn’t copy'); break; }
     case 'bankFix': { const a=acct(v); if(!a||!a.bankBal) break; const diff=round(a.bankBal.v-balAtBank(a),dec()); if(!diff) break;
-      if(await ask(`Make ${a.name} match your bank (${money(a.bankBal.v)} ${cur()} on ${shortD(a.bankBal.date)})? Your transactions don’t change.`,'Match bank')){ syncToBank(a); persist('profile'); toast('Balance now matches your bank'); if($('#dlg').open) openAccountSheet(v); render(false); } break; }
+      if(await ask(`Make ${a.name} match your bank (${money(a.bankBal.v)} ${cur()} on ${shortD(a.bankBal.date)})? Your transactions don’t change.`,'Match bank')){ syncToBank(a); persist('profile'); toast('Balance now matches your bank'); render(false); } break; }
     case 'smsSyncBal': { const S=P().sms||(P().sms={}); S.syncBal=S.syncBal===false; persist('profile'); toast(S.syncBal?'Balances will follow your bank’s messages':'Balances won’t change from bank messages'); break; }
     case 'demo': loadDemo(); break;
     case 'clearDemo': clearDemo(); break;
@@ -2165,6 +2182,7 @@ document.addEventListener('keydown',e=>{
   if(t.id==='p1'){e.preventDefault(); $('#p2').focus(); return;}
   if(t.id==='p2'){e.preventDefault(); if(!busyLock) lkCreate(); return;}
   if(t.id==='rp'){e.preventDefault(); lkRestore(); return;}
+  if(t.id==='smsNewPerson'){e.preventDefault(); $('[data-act="smsAddPerson"]').click(); return;}
   if(t.id==='newPerson'){e.preventDefault(); $('[data-act="addPerson"]').click(); return;}
   if(t.matches('[data-newitem]')){e.preventDefault(); catEdit('addItem',{dataset:{v:t.dataset.newitem}}); return;}
   if(t.matches('[data-newcat]')){e.preventDefault(); catEdit('addCat',{dataset:{type:t.dataset.newcat}}); return;}
@@ -2694,7 +2712,7 @@ const cardBg=c=>`linear-gradient(140deg,rgba(255,255,255,.14),rgba(0,0,0,.35)),$
 const shortCat=c=>(c&&c.name||'').replace(/ &.*$|,.*$/,'').split(' ').slice(0,2).join(' ');
 
 /* --- navigation: four tabs, and screens pushed on top of them --- */
-const TABS4=['home','tx','wealth','you'], PUSH4=['people','settings','accounts','sms','goalnew'];
+const TABS4=['home','tx','wealth','you'], PUSH4=['people','settings','accounts','sms','goalnew','acct','month'];
 function go4(v){ const u=state.ui; if($('#dlg').open&&!$('#dlg .add4')) $('#dlg').close();
   if(v==='sms'&&u.tab!=='sms'){ u.smsDone=0; u.smsAllCats=false; if(!u.smsSeen&&(P().smsQueue||[]).length){ u.smsSeen=true; u.smsLoading=true; setTimeout(()=>{ u.smsLoading=false; if(u.tab==='sms') render(); },1500); } } if(PUSH4.includes(v)&&!PUSH4.includes(u.tab)) u.back=u.tab; if(TABS4.includes(v)) u.back=null; u.tab=v; if(v==='home') u.cuFrom=0; render(); window.scrollTo(0,0); }
 function tabbarHTML(){
@@ -2719,6 +2737,7 @@ function viewHome4(){
     <div class="w-stack" id="stack4">${stackHTML()}</div>
     ${orbCardHTML()}
     ${smsCard4()}
+    ${comingUp4()}
     ${allTx().length?catBarsHTML(mk,Mn):welcome4()}
     ${todayHTML()}
     ${mapTeaser4(mk)}
@@ -2762,7 +2781,7 @@ function catBarsHTML(mk,Mn){
   const cs={}; for(const t of txBetween(mk+'-01',todayStr())) if(t.type==='expense') for(const x of allocs(t)) cs[x.catId]=(cs[x.catId]||0)+(t.refund?-x.amount:x.amount);
   const top=Object.keys(cs).filter(k=>cs[k]>0).sort((a,b)=>cs[b]-cs[a]).slice(0,5); if(!top.length) return '';
   const mx=cs[top[0]];
-  return `<div class="w-card h4-cats"><div class="ch"><span>${Mn} by category</span><button class="linkish w-cyan" data-act="tab" data-v="tx">See all</button></div>
+  return `<div class="w-card h4-cats"><div class="ch"><span>${Mn} by category</span><button class="linkish w-cyan" data-act="goMonth">See all</button></div>
     <div class="cbs4">${top.map((k,i)=>{ const v=catVis(k); const amt=P().hide?'•••':(cs[k]>=10?Math.round(cs[k]):cs[k].toFixed(1)); return `<div class="cb4"><bdi dir="ltr">${amt}</bdi><i style="height:${(8+cs[k]/mx*72).toFixed(1)}%;background:${v.color};animation-delay:${(0.3+i*0.08).toFixed(2)}s"></i></div>`; }).join('')}</div>
     <div class="cbl4">${top.map(k=>{ const v=catVis(k); return `<div style="color:${v.color}">${v.html}<span>${esc(shortCat(findCat(k)))}</span></div>`; }).join('')}</div></div>`;
 }
@@ -2833,11 +2852,21 @@ $('#dlg').addEventListener('click',e=>{ const dl=e.currentTarget; if(e.target!==
 /* ---------- Bank SMS review ----------
    Messages Masroof can't add on its own wait in a queue (saved, encrypted, with your profile) and are
    reviewed one card at a time: swipe right or tap ✓ to add it, left or × to skip it. */
-const sureRow=r=>r.acctSure&&!r.unsure&&!r.dup&&r.amount>0;
+const sureRow=r=>r.acctSure&&!r.unsure&&!r.dup&&r.amount>0&&(r.type!=='debt'||!!person(r.personId));
+// what an entry means for your money, in plain words
+function countsAs(t){
+  if(t.type==='transfer') return 'Moved between your accounts — not spending or income';
+  if(t.type==='debt') return `Between you and ${t.personId&&person(t.personId)?personName(t.personId):'a friend'} — not spending or income`;
+  if(t.type==='invest') return 'Investment — part of your net worth, not spending';
+  if(t.type==='income') return 'Income';
+  if(t.refund) return 'Refund — takes money off your spending';
+  return t.split?'Spending — only your share counts':'Spending — counts in your month and budgets'; }
 const SMS_WHY={balance:'Picked by the balance in the message',learned:'The account you chose before for these messages',bank:'From the bank’s name in the message',kind:'Your only account of this kind',you:'You picked this account'};
 function smsWhy(r){
+  if(r.how==='cardpay') return 'A payment to your credit card. Check the account it was paid from.';
   if(!r.acctSure) return r.nums&&r.nums.length?`A card ending ${r.nums[0]} Masroof hasn’t seen. Pick its account once and it’s remembered.`:'No card number in this message. Pick the account.';
   if(r.how==='number') return `Found by card ending ${(r.nums||[])[0]||''}`;
+  if(r.how==='cashdep') return 'Cash put into the bank: moved from Cash.';
   return SMS_WHY[r.how]||'Found from the message';
 }
 // add newly read messages: the sure ones go straight in when "add by itself" is on, the rest wait for you
@@ -2863,12 +2892,15 @@ function viewSms4(){
       <button class="w-btn" data-act="smsFile">${ic('tray-arrow-down')}Choose the bank SMS file</button><button class="w-btn sec" data-act="import">${ic('clipboard-text')}Paste messages</button><button class="linkish w-cyan" data-act="smsGuide">${ic('info')}${S.setup?'Automatic saving':'Set up automatic saving'}</button></div>`;
   }
   const done=u.smsDone||0, total=Q.length+done;
-  const out=r.type==='expense'&&!r.refund, isT=r.type==='transfer';
+  const isD=r.type==='debt', out=isD?DEBT_KIND[r.debtKind][0]==='give':r.type==='expense'&&!r.refund, isT=r.type==='transfer';
   const amtCls=isT?'':out?'w-mag':'w-cyan';
-  const types=[['out','Money out'],['in','Money in'],...(P().accounts.length>1?[['tr','Transfer']]:[])], tk=isT?'tr':out?'out':'in';
+  const types=[['out','Money out'],['in','Money in'],...(P().accounts.length>1?[['tr','Transfer']]:[]),['fr','Friend']], tk=isD?'fr':isT?'tr':out?'out':'in';
   const chips=(field,sel)=>`<div class="w-chips s4-acc">${[...P().accounts.filter(a=>a.id===sel),...P().accounts.filter(a=>a.id!==sel)].map(a=>`<button data-act="smsAcct" data-field="${field}" data-v="${esc(a.id)}" aria-pressed="${sel===a.id}"><i style="background:${cardBg(accColor(a))}"></i>${esc(a.name)}</button>`).join('')}</div>`;
   let cats='';
-  if(!isT){ const all=P().categories[r.type==='income'?'income':'expense']; let list=all;
+  if(isD){ const kinds=out?[['lent','I lent it'],['repaid_out','I paid back']]:[['repaid_in','They paid me back'],['borrowed','I borrowed it']];
+    cats=`<div class="s4-sec"><span class="lab">Who?</span><div class="s4-cats">${P().people.map(x=>`<button data-act="smsPerson" data-v="${esc(x.id)}" aria-pressed="${r.personId===x.id}">${esc(x.name)}</button>`).join('')}<span class="inline-add"><input class="inp" id="smsNewPerson" placeholder="New person"><button class="w-chip" data-act="smsAddPerson">Add</button></span></div>
+      <span class="lab">What was it?</span><div class="s4-cats">${kinds.map(([k,l])=>`<button data-act="smsKind" data-v="${k}" aria-pressed="${r.debtKind===k}">${l}</button>`).join('')}</div></div>`; }
+  else if(!isT){ const all=P().categories[r.type==='income'?'income':'expense']; let list=all;
     if(!u.smsAllCats){ list=[findCat(r.catId),...all.filter(c=>c.id!==r.catId)].filter(Boolean).slice(0,6); }
     cats=`<div class="s4-sec"><span class="lab">Category</span><div class="s4-cats">${list.map(c=>{ const v=catVis(c.id); return `<button data-act="smsCat" data-v="${esc(c.id)}" aria-pressed="${r.catId===c.id}"><span style="color:${r.catId===c.id?'inherit':v.color}">${v.html}</span>${esc(shortCat(c))}</button>`; }).join('')}${u.smsAllCats?'':`<button data-act="smsAllCats">${ic('caret-down')}More</button>`}</div></div>`; }
   h+=`<div class="s4-bars">${total<=14?[...Array(total)].map((_,i)=>`<i class="${i<done?'on':i===done?'cur':''}"></i>`).join(''):`<i class="on" style="flex:${done}"></i><i style="flex:${total-done}"></i>`}</div>
@@ -2876,20 +2908,22 @@ function viewSms4(){
   <div class="s4-wrap"><div class="s4-under"></div><div class="s4-card" id="smsCard">
     <span class="s4-stamp yes">Confirm</span><span class="s4-stamp no">Skip</span>
     <div class="s4-from"><b>${esc(r.sender||(acct(r.accountId)||{}).bank||'Bank SMS')}</b><span>${esc(dayLabel(r.date))}${r.at?' · '+esc(timeOf({at:r.at,date:r.date})):''}</span></div>
-    ${r.text?`<div class="s4-text" dir="auto">${esc(r.text)}</div>`:''}
+    ${r.text?`<div class="s4-text" dir="auto" data-notr>${esc(r.text)}</div>`:''}
     <div class="s4-amt"><span>${esc(r.merchant||'Transaction')}</span><div>${nb(`<span class="${amtCls}">${isT?'':out?'−':'+'}${money(r.amount,{show:true})}</span>`)}<small>${esc(cur())}</small></div>
       ${r.fx?`<p>${fxLine(r.fx,r.ctry)}${r.fxEst?' · <span>converted at today’s rate</span>':''}</p>${r.fxEst?`<label class="s4-fx"><span>What your bank charged in ${esc(cur())}</span><input class="inp" inputmode="decimal" data-smsamt value="${esc(String(r.amount))}"></label>`:''}`:''}
       ${r.dup?`<p class="w-mag">${ic('warning')}<span>Looks already recorded — skip it if it is</span></p>`:''}</div>
     <div class="w-seg s4-dir ${tk}">${types.map(([k,l])=>`<button data-act="smsType" data-v="${k}" aria-pressed="${tk===k}">${l}</button>`).join('')}</div>
+    <div class="s4-counts">${ic(isT?'arrows-left-right':isD?'hand-coins':out?'arrow-up-right':'arrow-down-left')}<span>${esc(countsAs(isD?{type:'debt',personId:r.personId}:isT?{type:'transfer'}:{type:r.type,refund:r.refund}))}</span></div>
+    ${r.xfer&&!isT&&!isD?`<div class="s4-ask"><b>${r.xfer==='out'?'Where did this transfer go?':'Where did this money come from?'}</b><div>${P().accounts.length>1?`<button class="w-chip" data-act="smsType" data-v="tr">${ic('arrows-left-right')}${r.xfer==='out'?'To my other account':'From my other account'}</button>`:''}<button class="w-chip" data-act="smsType" data-v="fr">${ic('hand-coins')}${r.xfer==='out'?'To a friend':'From a friend'}</button><button class="w-chip" data-act="smsXferOk">${ic('check')}${r.xfer==='out'?'It was spending':'It was income'}</button></div></div>`:''}
     <div class="s4-sec"><span class="lab">${isT?'From':'Account'}</span>${chips('accountId',r.accountId)}${isT?`<span class="lab">To</span>${chips('toAccountId',r.toAccountId)}`:''}
-      <div class="s4-why ${r.acctSure?'w-cyan':'w-mag'}">${ic(r.acctSure?'check-circle':'warning')}<span>${esc(smsWhy(r))}</span></div>${r.unsure?`<div class="s4-why w-mag">${ic('warning')}<span>Money in or out isn’t clear from this message — check it above.</span></div>`:''}</div>
+      <div class="s4-why ${r.acctSure?'w-cyan':'w-mag'}">${ic(r.acctSure?'check-circle':'warning')}<span>${esc(smsWhy(r))}</span></div>${r.unsure&&!r.xfer?`<div class="s4-why w-mag">${ic('warning')}<span>Money in or out isn’t clear from this message — check it above.</span></div>`:''}</div>
     ${cats}
     ${r.bal!=null?`<div class="s4-bal"><span>Bank balance after this</span>${nb(money(r.bal,{show:true}))}</div>`:''}
   </div></div>
   <div class="s4-btns"><button class="no" data-act="smsNo" aria-label="Skip">${ic('x')}</button><span>Swipe right to confirm, left to skip</span><button class="yes" data-act="smsYes" aria-label="Confirm">${ic('check')}</button></div>`;
   return h;
 }
-function smsFly(ok){ const c=$('#smsCard'); if(c){ c.style.transition='transform .28s ease-in,opacity .28s'; c.style.transform=`translateX(${(ok?1:-1)*(RTL()?-1:1)*480}px) rotate(${ok?18:-18}deg)`; c.style.opacity='0'; } buzz(ok?12:6); setTimeout(()=>smsDecide(ok),c?240:0); }
+function smsFly(ok){ const r0=(P().smsQueue||[])[0]; if(ok&&r0&&r0.type==='debt'&&!person(r0.personId)){ toast('Pick who it was first',{bad:true}); return; } const c=$('#smsCard'); if(c){ c.style.transition='transform .28s ease-in,opacity .28s'; c.style.transform=`translateX(${(ok?1:-1)*(RTL()?-1:1)*480}px) rotate(${ok?18:-18}deg)`; c.style.opacity='0'; } buzz(ok?12:6); setTimeout(()=>smsDecide(ok),c?240:0); }
 function smsDecide(ok){
   const p=P(), Q=p.smsQueue||[], r=Q.shift(); if(!r) return; const u=state.ui; u.smsDone=(u.smsDone||0)+1; u.smsAllCats=false;
   const back=()=>{ (p.smsQueue||(p.smsQueue=[])).unshift(r); u.smsDone=Math.max(0,u.smsDone-1); p.smsSeen=(p.smsSeen||[]).filter(k=>k!==r.key); persist('profile'); };
@@ -3069,6 +3103,90 @@ function updateAcctPreview(){
   $('#pvL4').textContent=f.last4?'•••• '+f.last4:''; p.querySelector('.abal').textContent=money(previewBal(f),{show:true});
 }
 
+/* ---------- one account: its statement ----------
+   What came in, what went out, what moved between your accounts, and the balance after each entry. */
+function viewAcct4(){
+  const u=state.ui, a=acct(u.acctId); if(!a) return viewAccounts4();
+  const b=balances(), bal=b[a.id]||0, cr=a.type==='card', c=cr?cardStatus(a):null;
+  const [ma,mb]=periodRange('month',todayStr()); let inn=0,out=0,tin=0,tout=0,spentSav=0;
+  for(const t of txBetween(ma,mb)){ const e=acctEffect(t,a.id); if(!e) continue;
+    if(t.type==='transfer'){ if(e>0) tin+=e; else tout-=e; } else { if(e>0) inn+=e; else out-=e; }
+    if(t.type==='expense'&&!t.refund&&t.accountId===a.id&&paidByMe(t)) spentSav+=t.amount; }
+  const list=allTx().filter(t=>acctEffect(t,a.id)!==0).sort((x,y)=>x.date===y.date?(y.at||y.ts||0)-(x.at||x.ts||0):(x.date<y.date?1:-1));
+  let run=bal; const after=new Map(); for(const t of list){ after.set(t.id,run); run-=acctEffect(t,a.id); }
+  const F=u.acctF||'all', shown=list.filter(t=>{ const e=acctEffect(t,a.id), mv=t.type==='transfer'; return F==='all'||F==='in'&&e>0&&!mv||F==='out'&&e<0&&!mv||F==='tr'&&mv; });
+  const N=u.acctN||60, groups={}; for(const t of shown.slice(0,N)) (groups[t.date]||(groups[t.date]=[])).push(t);
+  const row=t=>{ const e=acctEffect(t,a.id), r=row4(t); let title=r.title, sub, vis=txVis(t);
+    if(t.type==='transfer'){ title=e<0?`To ${acctName(t.toAccountId)}`:`From ${acctName(t.accountId)}`; sub=['Transfer',t.note&&t.note!=='Transfer'?t.note:''].filter(Boolean).join(' · '); }
+    else if(t.type==='expense'||t.type==='income'){ const ct=cat(t.catId); sub=[t.lines&&t.lines.length>1?`${new Set(t.lines.map(l=>l.catId)).size} categories`:shortCat(ct),t.item&&t.note?t.item:''].filter(Boolean).join(' · '); }
+    else sub=countsAs(t).split(' — ')[0];
+    return `<button class="tx r4 st4" data-act="view" data-v="${esc(t.id)}">${tileHTML(vis)}<span class="r4m"><b>${esc(title)}</b><small>${esc(sub)}</small></span><span class="st4-v">${nb(`<span class="${e>0?'mi':''}">${e>0?'+':'−'}${money(Math.abs(e))}</span>`)}${nb(`<small>${money(after.get(t.id))}</small>`)}</span></button>`; };
+  const t0=todayStr(), y0=ymd(addDays(new Date(),-1));
+  const diff=a.bankBal?round(a.bankBal.v-balAtBank(a),dec()):null;
+  let h=`<div class="w-push-h"><button class="w-round" data-act="back" aria-label="Back">${backI()}</button><span class="t">${esc(a.name)}</span><button class="w-pill card" data-act="editAcct" data-v="${esc(a.id)}">${ic('pencil-simple')}Edit</button></div>
+  <div class="ae4-pv st4-card" style="background:${cardBg(accColor(a))}"><div class="t"><span>${esc(a.bank||TYPE_LABEL[a.type])}</span>${ic(TYPE_IC[a.type]||'bank')}</div><span class="nm">${esc(TYPE_LABEL[a.type]||'')}</span><i class="chip"></i>
+    <div class="b"><div>${nb(money(cr?-bal:bal))}<small>${cr?'owed':esc(cur())}</small></div><bdi dir="ltr">${acctNums(a).length?'•••• '+esc(acctNums(a)[0]):''}</bdi></div></div>`;
+  if(a.bankBal) h+=`<div class="w-card st4-bank ${Math.abs(diff)<10**-dec()?'ok':'off'}">${ic(Math.abs(diff)<10**-dec()?'check-circle':'warning')}<span><b>${Math.abs(diff)<10**-dec()?'Matches your bank':'Different from your bank'}</b><small>${esc(`Bank said ${money(a.bankBal.v)} on ${shortD(a.bankBal.date)}`)}</small></span>${Math.abs(diff)<10**-dec()?'':`<button class="w-pill" data-act="bankFix" data-v="${esc(a.id)}">Match bank</button>`}</div>`;
+  if(c&&c.stmt) h+=`<div class="w-card st4-cc"><div class="hd"><span>${c.due>0?(c.late?'Overdue since':'Pay by'):'Statement'}</span><b class="${c.late?'w-mag':''}">${c.due>0?esc(fmtD(c.dueDate,{weekday:'short',day:'numeric',month:'short'})):c.stmtOwed>0?'Paid':'Nothing owed'}</b></div>
+    <div class="st4-grid"><div><span>Left to pay</span>${nb(money(c.due))}</div><div><span>Minimum</span>${nb(money(c.minimum))}</div><div><span>Statement</span>${nb(money(c.stmtOwed))}</div><div><span>Available</span>${nb(c.avail!=null?money(c.avail):'—')}</div></div>
+    ${c.due>0?`<button class="w-btn" data-act="cardPay" data-v="${esc(a.id)}">Pay ${esc(money(c.due))} ${esc(cur())}</button>`:''}</div>`;
+  else if(cr) h+=`<button class="w-card st4-add" data-act="editAcct" data-v="${esc(a.id)}">${ic('info')}<span><b>Add your card’s details</b><small>Credit limit, statement day and due day — then Masroof shows what to pay and when.</small></span>${chevI()}</button>`;
+  h+=`<div class="st4-month"><div><span>In this month</span>${nb(`<span class="mi">+${money(inn)}</span>`)}</div><div><span>Out this month</span>${nb(`−${money(out)}`)}</div>
+    <div><span>Moved in</span>${nb(`+${money(tin)}`)}</div><div><span>Moved out</span>${nb(`−${money(tout)}`)}</div></div>
+  <p class="hint st4-note">“Moved” is money between your own accounts. It isn’t spending or income.</p>
+  ${hasRole(a,'savings')&&spentSav>0?`<p class="hint st4-note w-mag">${esc(`${money(spentSav)} was spent straight from this savings account this month.`)}</p>`:''}
+  <div class="w-chips st4-acts"><button class="w-chip" data-act="accAdd" data-v="${esc(a.id)}">${ic('arrow-up-right')}Spend from here</button><button class="w-chip" data-act="accIncome" data-v="${esc(a.id)}">${ic('arrow-down-left')}Money in</button>${P().accounts.length>1?`<button class="w-chip" data-act="accMove" data-v="${esc(a.id)}">${ic('arrows-left-right')}Move money</button>`:''}</div>
+  <div class="w-chips a4-f st4-f">${[['all','All'],['in','In'],['out','Out'],['tr','Moved']].map(([k,l])=>`<button class="w-chip" data-act="acctF" data-v="${k}" aria-pressed="${F===k}">${l}</button>`).join('')}</div>`;
+  h+=shown.length?Object.entries(groups).map(([d,ts])=>`<div class="a4-day"><span>${d===t0?'Today':d===y0?'Yesterday':fmtD(d,{weekday:'short',day:'numeric',month:'short',...(d.slice(0,4)!==t0.slice(0,4)?{year:'numeric'}:{})})}</span></div><div class="w-group a4-g">${ts.map(row).join('')}</div>`).join('')
+    +(shown.length>N?`<button class="w-btn sec a4-more" data-act="acctMore">Show more · ${shown.length-N}</button>`:'')
+    :`<div class="a4-empty">${ic('receipt')}<span>Nothing here yet.</span></div>`;
+  return h;
+}
+/* ---------- coming up: bills, card payments and loans in the next days ---------- */
+function upcoming4(days){
+  const lim=ymd(addDays(new Date(),days)), out=[];
+  for(const r of P().recurring) if(r.next&&r.next<=lim) out.push({date:r.next,title:recLabel(r),amt:r.amount,dir:r.type==='income'?'in':r.type==='transfer'?'mv':'out',icon:r.type==='income'?'arrow-down-left':r.type==='transfer'?'arrows-left-right':'repeat',act:'setPanel',v:'recurring'});
+  for(const a of P().accounts){ const c=cardStatus(a); if(c&&c.due>0&&c.dueDate<=lim) out.push({date:c.dueDate,title:`Pay ${a.name}`,amt:c.due,dir:'out',icon:'credit-card',late:c.late,act:'accView',v:a.id}); }
+  for(const x of P().people){ const d=personDue(x.id); if(d&&d.date<=lim) out.push({date:d.date,title:d.bal>0?`${x.name} pays you back`:`Pay back ${x.name}`,amt:Math.abs(d.bal),dir:d.bal>0?'in':'out',icon:'hand-coins',late:d.late,act:'person',v:x.id}); }
+  return out.sort((a,b)=>a.date<b.date?-1:1);
+}
+function upRow4(x){ const d=pd(x.date), n=dayDiff(todayStr(),x.date);
+  return `<button class="up4" data-act="${x.act}" data-v="${esc(x.v)}"><span class="dt${x.late?' late':''}"><b>${d.getDate()}</b><small>${monS(d.getMonth())}</small></span><span class="tt"><b>${esc(x.title)}</b><small class="${x.late?'w-mag':''}">${x.late?'Overdue':n===0?'Today':n===1?'Tomorrow':`In ${n} days`}</small></span>${nb(`<span class="${x.dir==='in'?'mi':''}">${x.dir==='in'?'+':x.dir==='out'?'−':''}${money(x.amt)}</span>`)}</button>`; }
+function comingUp4(){ const up=upcoming4(7); if(!up.length) return '';
+  return `<div class="w-card h4-up"><div class="ch"><span>Coming up</span><button class="linkish w-cyan" data-act="goMonth">See all</button></div>${up.slice(0,3).map(upRow4).join('')}</div>`; }
+
+/* ---------- a month at a glance ----------
+   Income, spending, what you saved and what's left; each budget; each account's money in and out;
+   where you spent most; and what's coming up. Money moved between your accounts isn't counted. */
+function viewMonth4(){
+  const u=state.ui, anchor=u.mAnchor||todayStr(), [a,b]=periodRange('month',anchor), t0=todayStr(), isNow=a<=t0&&t0<=b;
+  const list=txBetween(a,b), s=summarize(list), ps=summarize(txBetween(...periodRange('month',shiftAnchor('month',anchor,-1))));
+  const moved=sum(list.filter(t=>t.type==='transfer'),t=>t.amount), left=s.income-s.spent-s.saved-s.invested;
+  const pct=ps.spent>0?Math.round((s.spent-ps.spent)/ps.spent*100):null;
+  let h=`<div class="w-push-h"><button class="w-round" data-act="back" aria-label="Back">${backI()}</button><span class="t">${esc(periodLabel('month',anchor))}</span>
+    <button class="w-round" data-act="mShift" data-v="-1" aria-label="Previous month">${ic(RTL()?'caret-right':'caret-left')}</button><button class="w-round" data-act="mShift" data-v="1" aria-label="Next month"${isNow?' disabled':''}>${chevI()}</button></div>
+  <div class="w-card mo4-sum"><div><span>Income</span>${nb(`<span class="mi">${money(s.income)}</span>`)}</div><div><span>Spending</span>${nb(money(s.spent))}</div>
+    <div><span>Saved &amp; invested</span>${nb(money(s.saved+s.invested))}</div><div><span>Left</span>${nb(`<span class="${left<0?'w-mag':''}">${money(left)}</span>`)}</div></div>
+  <p class="hint mo4-note">${pct==null?'':`<span>${esc(pct===0?'Spending is the same as last month.':`Spending is ${Math.abs(pct)}% ${pct>0?'more':'less'} than last month${isNow?' so far':''}.`)}</span> `}${moved>0?`<span>${esc(`${money(moved)} moved between your accounts isn’t counted.`)}</span>`:''}</p>`;
+  // budgets and categories
+  const cats=P().categories.expense.map(c=>({c,sp:(s.byCat[c.id]||{}).total||0,bud:budgetFor(c.id,anchor)})).filter(x=>x.sp>0||x.bud>0).sort((x,y)=>(y.bud>0)-(x.bud>0)||y.sp-x.sp);
+  const mx=Math.max(1e-9,...cats.map(x=>x.sp));
+  h+=`<div class="w-sec"><h2>Categories</h2><button class="w-pill card" data-act="setPanel" data-v="budgets">${ic('target')}Budgets</button></div>`;
+  h+=cats.length?`<div class="w-group mo4-cats">${cats.map(({c,sp,bud})=>{ const v=catVis(c.id), over=bud>0&&sp>bud, w=bud>0?Math.min(100,sp/bud*100):sp/mx*100;
+    return `<button class="mo4-c" data-act="seeTx" data-v="${esc(c.id)}">${tileHTML(v)}<span class="m"><span class="r"><b>${esc(shortCat(c))}</b>${nb(money(sp))}</span><i class="bar"><i style="width:${w.toFixed(1)}%;background:${over?'var(--mag)':bud>0?'var(--yel)':v.color}"></i></i>
+      <small class="${over?'w-mag':''}">${bud>0?esc(over?`${money(sp-bud)} over a budget of ${money(bud)}`:`${money(bud-sp)} left of ${money(bud)}`):esc(`${Math.round(sp/(s.spent||1)*100)}% of spending`)}</small></span></button>`; }).join('')}</div>`
+    :`<div class="w-card wl4-empty">${ic('chart-bar')}<span>No spending ${isNow?'yet this month':'this month'}.</span></div>`;
+  // accounts
+  const accs=P().accounts.map(x=>({x,f:accFlows(list,x.id)})).filter(o=>o.f.inn||o.f.out);
+  if(accs.length) h+=`<div class="w-sec"><h2>Accounts</h2></div><div class="w-group mo4-acc">${accs.map(({x,f})=>`<button class="mo4-a" data-act="accView" data-v="${esc(x.id)}"><i class="cc" style="background:${cardBg(accColor(x))}"></i><b>${esc(x.name)}</b><span>${f.inn?nb(`<span class="mi">+${money(f.inn)}</span>`):''}${f.out?nb(`−${money(f.out)}`):''}</span></button>`).join('')}</div>
+    <p class="hint mo4-note">In and out include money moved between your accounts.</p>`;
+  // places
+  const top=Object.values(s.byMerchant).sort((x,y)=>y.total-x.total).slice(0,5);
+  if(top.length) h+=`<div class="w-sec"><h2>Where you spent most</h2></div><div class="w-group mo4-top">${top.map((m,i)=>`<div class="mo4-p"><span class="rk">${i+1}</span><b>${esc(m.name)}</b><small>${m.count}×</small>${nb(money(m.total))}</div>`).join('')}</div>`;
+  if(isNow){ const up=upcoming4(31); h+=`<div class="w-sec"><h2>Coming up</h2></div>${up.length?`<div class="w-group mo4-up">${up.map(upRow4).join('')}</div>`:`<div class="w-card wl4-empty">${ic('calendar-check')}<span>No bills, card payments or loans due in the next month.</span></div>`}`; }
+  h+=`<div class="mo4-pdf"><button class="w-btn sec" data-act="export">${ic('file-pdf')}PDF report or CSV</button></div>`;
+  return h;
+}
 /* ---------- You ---------- */
 function viewYou4(){
   const p=P(), pb=peopleBalances(), owed=sum(Object.values(pb).filter(v=>v>0)), Q=(p.smsQueue||[]).length, S=p.sms||{};
@@ -3081,7 +3199,7 @@ function viewYou4(){
       ${tile('chat-text','Bank messages',Q?`${Q} waiting`:S.last?`Last ${ago(S.last)}`:'Bring them in','tab','sms')}
       ${tile('globe-hemisphere-east','Spending map',`${mapPlaces('all').length} places`,'openMap')}
       ${tile('bell-ringing','Reminders',dueWk?`${dueWk} due this week`:'Add to Calendar','reminders')}
-      ${tile('file-pdf','Monthly report',`${MONTHS[new Date().getMonth()]} PDF`,'export')}
+      ${tile('chart-bar','This month',`${MONTHS[new Date().getMonth()]} at a glance`,'goMonth')}
     </div>
     <div class="w-group" style="margin-top:10px"><button class="y4-row" data-act="tab" data-v="settings">${ic('gear-six')}<span>Settings</span>${chevI()}</button><button class="y4-row" data-act="lockNow">${ic('lock-key')}<span>Lock now</span>${chevI()}</button></div>`;
 }
