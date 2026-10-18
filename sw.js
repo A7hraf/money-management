@@ -1,7 +1,7 @@
 // Masroof offline cache. It only stores the app's own files — never your data.
 // The app's code is fetched fresh whenever the phone is online, so a push to GitHub shows up
 // the next time the app is opened. The cached copy is only used offline.
-const VERSION = 'masroof-v19';
+const VERSION = 'masroof-v20';
 const CORE = ['./', './index.html', './css/app.css', './css/v4.css', './js/icons.js', './js/i18n.js', './js/fx.js', './js/globe-data.js', './js/globe.js', './js/globe-countries.js', './js/vendor/globe.gl.min.js', './js/globe3d.js', './images/earth-night.jpg', './images/earth-day.jpg', './js/app.js', './manifest.json', './images/logo-mark.png', './images/icon4-180.png', './images/icon4-192.png', './images/icon4-512.png'];
 // cache:'reload' skips the browser's own HTTP cache, which could otherwise hand back a stale copy
 const fresh = u => new Request(u, { cache: 'reload' });

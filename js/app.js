@@ -11,7 +11,7 @@ const newId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).sl
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 // the version shown in Settings › About; version.json on the site holds the newest one
-const APP_VERSION='4.1';
+const APP_VERSION='4.2';
 // language: English or Arabic (the Arabic words live in js/i18n.js). Day/month names switch in place.
 let LANG='en';
 const MONTHS_EN=MONTHS.slice(), MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -126,13 +126,13 @@ const state={profile:null,months:{},ready:false,
 // Everything lives in an encrypted vault on this phone (see "encrypted local vault" below).
 // persist() just schedules one encrypted save of the whole state.
 const downloadsNs={save:async({filename,data})=>{offerFile(filename,data,'text/csv','This CSV is NOT encrypted — anyone who opens the file can read it. Save it somewhere private.');return {status:'offered'};}};
-function persist(){ budCache.clear(); scheduleSave(); }
-const persistMonth=()=>{ budCache.clear(); scheduleSave(); };
+function persist(){ budCache.clear(); planCache.clear(); scheduleSave(); }
+const persistMonth=()=>{ budCache.clear(); planCache.clear(); scheduleSave(); };
 /* monthly budget for a category in the month containing `anchor`. With rollover on, what you
    didn't spend (or overspent) in earlier months since rollover started is added (or taken off). */
 const budCache=new Map();
 function budgetInfo(id,anchor){
-  const base=+P().budgets[id]||0; if(!(base>0)) return null; const R=P().rollover;
+  const pm=planMonthly(id,anchor), base=pm!=null?pm:+P().budgets[id]||0; if(!(base>0)) return null; const R=P().rollover;
   if(!R||!R.from) return {base,carry:0,total:base};
   const [a]=periodRange('month',anchor||todayStr()); const key=id+'|'+a; if(budCache.has(key)) return budCache.get(key);
   let carry=0, d=R.from, g=0;
@@ -256,9 +256,23 @@ function peopleBalances(){ // positive = they owe you
   }
   return b;
 }
-// when an open loan is due: the latest pay-back date on a loan in the same direction as what's owed now
+/* loans paid back monthly: each loan with a plan gets its schedule, and pay-backs from that person
+   (after the loan) are counted against its instalments, oldest loan first */
+function loanPlans(pid){
+  const out=[], all=allTx(), byP={};
+  for(const t of all) if(t.type==='debt'&&t.payPlan&&(t.debtKind==='lent'||t.debtKind==='borrowed')&&(!pid||t.personId===pid)) (byP[t.personId+'|'+t.debtKind]||(byP[t.personId+'|'+t.debtKind]=[])).push(t);
+  for(const [k,loans] of Object.entries(byP)){ const [personId,kind]=k.split('|'); loans.sort((a,b)=>a.date<b.date?-1:1);
+    let paid=sum(all.filter(t=>t.type==='debt'&&t.personId===personId&&t.debtKind===(kind==='lent'?'repaid_in':'repaid_out')&&t.date>=loans[0].date),t=>t.amount);
+    for(const t of loans){ const amt=+t.payPlan.amt||0; if(!(amt>0)) continue; const n=Math.ceil(t.amount/amt-1e-9), f=pd(t.payPlan.first||t.date), sched=[]; let mine=Math.min(paid,t.amount); paid-=mine;
+      for(let i=0;i<n;i++){ const a=i<n-1?amt:round(t.amount-amt*(n-1),dec()); const d=ymd(dayIn(f.getFullYear(),f.getMonth()+i,f.getDate())); const got=Math.min(a,mine); mine-=got; sched.push({date:d,amt:a,got,paid:got>=a-1e-9}); }
+      const nx=sched.findIndex(x=>!x.paid); out.push({tx:t,personId,kind,amt,n,sched,done:nx<0,k:nx<0?n:nx+1,next:nx<0?null:sched[nx],late:nx>=0&&sched[nx].date<todayStr(),left:sum(sched,x=>x.amt-x.got)}); } }
+  return out;
+}
+// when an open loan is due: its next monthly payment, or the latest pay-back date on a loan in the same direction as what's owed now
 function personDue(id){
   const bal=peopleBalances()[id]||0; if(Math.abs(bal)<10**-dec()) return null;
+  const lp=loanPlans(id).filter(x=>!x.done&&x.kind===(bal>0?'lent':'borrowed')).sort((a,b)=>a.next.date<b.next.date?-1:1)[0];
+  if(lp) return {date:lp.next.date,bal,late:lp.late,inst:{k:lp.k,n:lp.n,amt:lp.next.amt-lp.next.got}};
   const kind=bal>0?'lent':'borrowed'; const L=allTx().filter(t=>t.type==='debt'&&t.personId===id&&t.debtKind===kind&&t.due).sort((a,b)=>a.date<b.date?1:-1)[0];
   return L?{date:L.due,bal,late:L.due<todayStr()}:null;
 }
@@ -349,6 +363,213 @@ function suggestMonthly(){
 }
 
 /* ================= recurring ================= */
+/* ================= spending plan =================
+   Your salary and what you expect to spend. Each line is a category, or one item in it (Coffee, Fuel,
+   Cinema), for a day, a week or a month; a daily line can be different on weekends. Money a day doesn't
+   use moves to the days left, and an overspend comes off them — over the week or the month, as you choose.
+   When you go over, you pick how to get back (a "fix"): spread it, catch up in a week or two, skip a
+   line for a while, use what other lines saved, unplanned salary or savings. */
+const plan=()=>P().plan||null;
+const planOn=()=>{ const pl=plan(); return !!(pl&&pl.lines&&pl.lines.length); };
+const WEEKEND_DEF=[5,6]; // Friday and Saturday
+const wkdDays=()=>{ const pl=plan(); return pl&&Array.isArray(pl.weekend)?pl.weekend:WEEKEND_DEF; };
+const isWkd=ds=>wkdDays().includes(pd(ds).getDay());
+const lineName=l=>l.item||shortCat(cat(l.catId));
+const lineVis=l=>catVis(l.catId,l.item);
+const dayList=(a,b)=>{ const out=[]; for(let d=pd(a),g=0;ymd(d)<=b&&g<400;d=addDays(d,1),g++) out.push(ymd(d)); return out; };
+const planCache=new Map(); // cleared whenever anything is saved
+function cycleDays(ds){ const k='cd|'+ds; if(planCache.has(k)) return planCache.get(k); const [a,b]=periodRange('month',ds), n=dayDiff(a,b)+1; planCache.set(k,n); return n; }
+// what one line is given on one day, before any fix
+function planned(l,ds){
+  if(l.period==='day') return Math.max(0,+(isWkd(ds)&&l.wkd!=null&&l.wkd!==''?l.wkd:l.amt)||0);
+  if(l.period==='week') return Math.max(0,+l.amt||0)/7;
+  return Math.max(0,+l.amt||0)/cycleDays(ds);
+}
+// spending on a line, by date
+function lineSpend(l,a,b){
+  const k='s|'+l.catId+'|'+(l.item||'')+'|'+a+'|'+b; if(planCache.has(k)) return planCache.get(k);
+  const m={}; for(const t of txBetween(a,b)) if(t.type==='expense') for(const x of allocs(t)) if(x.catId===l.catId&&(!l.item||x.item===l.item)) m[t.date]=(m[t.date]||0)+x.amount;
+  planCache.set(k,m); return m;
+}
+const spentIn=(m,a,b)=>{ let s=0; for(const d in m) if(d>=a&&d<=b) s+=m[d]; return s; };
+const fixes=()=>(plan()&&plan().fixes)||[];
+function fixBase(l,f){ const k='fb|'+f.id+'|'+l.id; if(planCache.has(k)) return planCache.get(k); const v=sum(dayList(f.from,f.to),d=>planned(l,d))||1; planCache.set(k,v); return v; }
+// what a fix takes off a line's day: a cut is shared out by each day's amount; a pause takes the whole day
+function cutOn(l,ds){ const p0=planned(l,ds); let c=0;
+  for(const f of fixes()){
+    if(f.pause&&f.pause.lineId===l.id&&ds>=f.pause.from&&ds<=f.pause.to) return p0;
+    if(f.lineId!==l.id||ds<f.from||ds>f.to) continue;
+    if(f.kind==='pause') return p0;
+    if(f.kind==='cut') c+=f.amount*p0/fixBase(l,f); }
+  return Math.min(p0,c); }
+const wOn=(l,ds)=>planned(l,ds)-cutOn(l,ds);
+// money moved into (or out of) a line by fixes made in this window
+function extraIn(l,a,b){ let x=0; for(const f of fixes()){ if(f.from<a||f.from>b) continue;
+  if(f.lineId===l.id&&(f.kind==='move'||f.kind==='savings'||f.kind==='raise')) x+=f.amount;
+  for(const m of f.moves||[]) if(m.from===l.id) x-=m.amt; } return x; }
+// the window a line evens out over
+// (a plan made mid-month starts on the day you made it)
+function lineWindow(l,ds){ const [a,b]=periodRange(l.period!=='month'&&plan().pool==='week'?'week':'month',ds), st=plan().start; return [st&&st>a&&st<=b?st:a,b]; }
+// recent habit: average spent on each weekday over the four weeks before `ds`
+function dowHabit(l,ds){ const a=ymd(addDays(pd(ds),-28)), b=ymd(addDays(pd(ds),-1)), m=lineSpend(l,a,b), r=[0,0,0,0,0,0,0];
+  for(const d in m) r[pd(d).getDay()]+=m[d]/4; return r; }
+const hasHistory=(l,ds)=>Object.keys(lineSpend(l,ymd(addDays(pd(ds),-60)),ymd(addDays(pd(ds),-1)))).length>=6;
+
+/* where a line stands today: what's left today / this week / this month, ahead or over, and the forecast */
+function lineStatus(l,T){
+  T=T||todayStr(); const k='st|'+l.id+'|'+T; if(planCache.has(k)) return planCache.get(k);
+  const [a,b]=lineWindow(l,T), days=dayList(a,b), sp=lineSpend(l,a,b);
+  const B=sum(days,d=>planned(l,d))+extraIn(l,a,b);
+  const S=spentIn(sp,a,T), before=spentIn(sp,a,ymd(addDays(pd(T),-1))), today=sp[T]||0;
+  const rest=days.filter(d=>d>=T), need=sum(rest,d=>wOn(l,d)), after=need-wOn(l,T), rem=B-before;
+  const st={l,a,b,B,S,today,period:l.period};
+  if(l.period==='day'){
+    st.allow=Math.max(0,need>1e-9?rem*wOn(l,T)/need:(T===b?rem:0)); st.left=st.allow-today; st.leftLabel='left today';
+    st.ahead=rem-after-Math.max(today,wOn(l,T));
+  } else if(l.period==='week'){
+    // this week gets what the window holds minus what the weeks after it need; what earlier weeks didn't use comes with it
+    const [wa,wb]=periodRange('week',T), ws=wa<a?a:wa, we=wb>b?b:wb, needAfter=sum(days.filter(d=>d>we),d=>wOn(l,d));
+    st.allow=B-needAfter-spentIn(sp,a,ymd(addDays(pd(ws),-1))); st.left=B-needAfter-S; st.leftLabel='left this week'; st.ws=ws; st.we=we;
+    st.ahead=st.left<0?st.left:Math.max(0,st.left-sum(dayList(ymd(addDays(pd(T),1)),we),d=>wOn(l,d)));
+  } else { st.allow=B; st.left=B-S; st.leftLabel='left this month'; st.ahead=Math.min(0,st.left); }
+  // forecast: keep to the plan, or keep spending the way you have these four weeks
+  const hab=dowHabit(l,T), useHab=hasHistory(l,T);
+  const restAfter=days.filter(d=>d>T);
+  let fc=S+(l.period==='month'?0:sum(restAfter,d=>useHab?hab[pd(d).getDay()]:wOn(l,d)));
+  if(l.period==='month'){ const avg=lineAvgMonths(l,3); fc=Math.max(S,avg||S); }
+  st.forecast=fc; st.fcLeft=B-fc;
+  const tol=Math.max(10**-dec()*5,l.period==='day'?planned(l,T)*.25:B*.04);
+  st.over=st.ahead<-tol?round(-st.ahead,dec()):0;
+  st.fix=fixes().find(f=>f.lineId===l.id&&f.from>=a&&f.from<=b&&(f.to||b)>=T)||null;
+  planCache.set(k,st); return st;
+}
+// average monthly spend on a line over the last n complete months
+function lineAvgMonths(l,n){ let s=0,c=0; for(let i=1;i<=n;i++){ const [a,b]=periodRange('month',shiftAnchor('month',todayStr(),-i)); const m=lineSpend(l,a,b); if(!Object.keys(m).length) continue; s+=spentIn(m,a,b); c++; } return c?s/c:0; }
+// a line's plan for a whole month, for budgets and the salary split
+function lineMonthEq(l,anchor){ const [a,b]=periodRange('month',anchor||todayStr()); if(l.period==='month') return +l.amt||0; return round(sum(dayList(a,b),d=>planned(l,d)),dec()); }
+function planMonthly(catId,anchor){ const pl=plan(); if(!pl) return null; const l=(pl.lines||[]).find(x=>x.catId===catId&&!x.item); return l?lineMonthEq(l,anchor):null; }
+// today, across the daily lines
+function planToday(){ const ls=(plan().lines||[]).map(l=>lineStatus(l)), top=topLines(); const dl=ls.filter(s=>s.period==='day'&&top.includes(s.l));
+  return {lines:ls,allow:sum(dl,s=>s.allow),spent:sum(dl,s=>s.today),left:sum(dl,s=>s.left),over:ls.filter(s=>s.over>0&&!s.fix)}; }
+// the whole month: salary, planned, spent, and what's left at the end two ways
+function planMonth(){
+  const pl=plan(), T=todayStr(), [a,b]=periodRange('month',T), ls=topLines();
+  const plannedM=sum(ls,l=>lineMonthEq(l,T)), goalsM=sum(P().goals,g=>g.plan&&g.plan.amount>0?(g.plan.freq==='weekly'?g.plan.amount*52/12:g.plan.freq==='yearly'?g.plan.amount/12:g.plan.amount):0);
+  const loansM=sum(loanPlans().filter(x=>x.kind==='borrowed'&&!x.done),x=>x.amt);
+  const s=summarize(txBetween(a,b)), fc=spendForecast(a,b,T);
+  const salary=+pl.salary||0;
+  return {a,b,salary,plannedM,goalsM,loansM,unplanned:salary-plannedM-goalsM-loansM,spent:s.spent,income:s.income,fc,
+    endPlan:(salary||s.income)-Math.max(plannedM,s.spent)-loansM, endPace:(salary||s.income)-fc.total-loansM};
+}
+// what this month will add up to: spent so far plus your usual for each day left (by weekday), and bills not paid yet
+function spendForecast(a,b,T){
+  const k='fc|'+a+'|'+T; if(planCache.has(k)) return planCache.get(k);
+  const ha=ymd(addDays(pd(a),-84)), hb=ymd(addDays(pd(a),-1)), hist=txBetween(ha,hb).filter(t=>t.type==='expense');
+  const flex=[0,0,0,0,0,0,0], lumps={}; let wk=12;
+  for(const t of hist){ const m=myShare(t); if(!m) continue; if(t.recurringId||t.catId==='bills'||m>=60) lumps[t.catId+'|'+(t.item||t.note||'')]=1; else flex[pd(t.date).getDay()]+=m/wk; }
+  const cur=txBetween(a,T).filter(t=>t.type==='expense'), spent=sum(cur,myShare);
+  const curFlex=sum(cur.filter(t=>!(t.recurringId||t.catId==='bills'||myShare(t)>=60)),myShare);
+  const elapsed=dayList(a,T), restD=dayList(ymd(addDays(pd(T),1)),b);
+  const habitSoFar=sum(elapsed,d=>flex[pd(d).getDay()]), ratio=habitSoFar>0?Math.min(2,Math.max(.5,curFlex/habitSoFar)):1, wgt=Math.min(1,elapsed.length/14);
+  const k2=1+(ratio-1)*wgt, restFlex=sum(restD,d=>flex[pd(d).getDay()])*k2;
+  const bills=sum(P().recurring.filter(r=>r.type==='expense'&&r.next&&r.next>T&&r.next<=b),r=>+r.amount||0);
+  const r={spent,restFlex,bills,total:spent+restFlex+bills,ratio:k2,byDay:flex}; planCache.set(k,r); return r; }
+
+/* ---------- ways back when a line goes over ---------- */
+function recoverOptions(l){
+  const T=todayStr(), st=lineStatus(l,T), X=st.over; if(!(X>0)) return [];
+  const opts=[], b=st.b, nm=lineName(l), days=dayList(T,b);
+  const cutOpt=(n,key,title)=>{ const to=days[Math.min(days.length,n)-1]; const base=sum(dayList(T,to),d=>planned(l,d)); if(base<X*1.05) return;
+    const k=X/base, wd=l.period==='day'?(+l.amt||0)*(1-k):0, we=l.period==='day'?(+(l.wkd!=null&&l.wkd!==''?l.wkd:l.amt)||0)*(1-k):0;
+    const perWeek=l.period==='week'?(+l.amt||0)*(1-k):0;
+    opts.push({key,title,text:l.period==='day'?(Math.abs(wd-we)>1e-9?`${nm}: ${money(wd)} on workdays and ${money(we)} on weekends until ${shortD(to)}, then back to normal.`:`${nm}: ${money(wd)} a day until ${shortD(to)}, then back to normal.`)
+      :l.period==='week'?`${nm}: ${money(perWeek)} a week until ${shortD(to)}.`:`${nm}: ${money(X)} less by ${shortD(to)}.`,
+      fix:{kind:'cut',lineId:l.id,from:T,to,amount:X}}); };
+  if(l.period==='day'){
+    cutOpt(days.length,'end',`A little less every day until ${shortD(b)}`);
+    if(days.length>9) cutOpt(7,'w1','Back on track in one week');
+    if(days.length>16) cutOpt(14,'w2','Back on track in two weeks');
+    const tm=days.slice(1); let acc=0,n=0; for(const d of tm){ acc+=planned(l,d); n++; if(acc>=X) break; }
+    if(acc>=X&&n<=5) opts.push({key:'pause',title:n===1?`No ${nm} tomorrow`:`No ${nm} for ${n} days`,text:n===1?`Skip ${nm} tomorrow and you’re back on plan.`:`Skip ${nm} from tomorrow until ${shortD(tm[n-1])} and you’re back on plan.`,fix:{kind:'pause',lineId:l.id,from:tm[0],to:tm[n-1],amount:X}});
+  } else if(l.period==='week'){
+    // the weeks after this one pay it back: skip whole weeks, or spend less in each
+    const nw=ymd(addDays(pd(st.we),1)), wk=+l.amt||0, later=dayList(nw,b);
+    if(wk>0&&later.length){ const n=Math.ceil(X/wk-1e-9); if(n<=3&&later.length>=7*n) opts.push({key:'pause',title:n===1?`Skip ${nm} next week`:`Skip ${nm} for ${n} weeks`,text:`You’ve already spent ahead: no ${nm} from ${shortD(nw)} until ${shortD(later[7*n-1])} covers it.`,fix:{kind:'pause',lineId:l.id,from:nw,to:later[7*n-1],amount:X}});
+      const base=sum(later,d=>planned(l,d)); if(base>=X*1.05) opts.push({key:'end',title:`Spend less on ${nm} until ${shortD(b)}`,text:`${nm}: ${money(wk*(1-X/base))} a week from ${shortD(nw)}.`,fix:{kind:'cut',lineId:l.id,from:nw,to:b,amount:X}}); }
+  }
+  // other lines that are ahead
+  const others=plan().lines.filter(o=>o.id!==l.id).map(o=>lineStatus(o,T)).filter(s=>s.ahead>0).sort((x,y)=>y.ahead-x.ahead);
+  { let need=X; const mv=[]; for(const s of others){ if(need<=1e-9) break; const t=Math.min(s.ahead,need); mv.push({from:s.l.id,amt:round(t,dec())}); need-=t; }
+    if(need<=10**-dec()&&mv.length) opts.push({key:'ahead',title:'Use what you saved on other lines',text:mv.map(m=>`${lineName(plan().lines.find(o=>o.id===m.from))} ${money(m.amt)}`).join(' · ')+' — they were under plan.',fix:{kind:'move',lineId:l.id,from:T,to:b,amount:X,moves:mv}}); }
+  // spread over the other daily lines
+  { const dl=plan().lines.filter(o=>o.id!==l.id&&o.period==='day'); const room=dl.map(o=>({o,r:sum(days,d=>wOn(o,d))})).filter(x=>x.r>0), R=sum(room,x=>x.r);
+    if(room.length&&R>=X*2){ const mv=room.map(x=>({from:x.o.id,amt:round(X*x.r/R,dec())}));
+      opts.push({key:'share',title:'Share it across your other daily lines',text:mv.map(m=>{ const o=plan().lines.find(z=>z.id===m.from); return `${lineName(o)} −${money(m.amt/days.length)} a day`; }).join(' · '),fix:{kind:'move',lineId:l.id,from:T,to:b,amount:X,moves:mv}}); } }
+  // a skip on a fun line pays for it
+  for(const o of plan().lines.filter(o=>o.id!==l.id&&o.period==='day'&&(o.catId==='fun'||o.item))){ const tm=days.slice(1); let acc=0,n=0; for(const d of tm){ acc+=wOn(o,d); n++; if(acc>=X) break; }
+    if(acc>=X&&n<=7){ opts.push({key:'skip-'+o.id,title:n===1?`No ${lineName(o)} tomorrow`:`No ${lineName(o)} for ${n} days`,text:`Its money covers ${nm}: skip ${lineName(o)} until ${shortD(tm[n-1])}.`,fix:{kind:'move',lineId:l.id,from:T,to:b,amount:X,moves:[{from:o.id,amt:X}],pause:{lineId:o.id,from:tm[0],to:tm[n-1]}}}); break; } }
+  // salary the plan hasn't given out
+  const pm=planMonth(), used=sum(fixes().filter(f=>f.kind==='raise'&&f.from>=pm.a),f=>f.amount), free=pm.salary>0?pm.unplanned-used:0;
+  if(free>=X) opts.push({key:'raise',title:'Use salary your plan hasn’t given out',text:`${money(free)} of your salary isn’t planned for anything this month. ${money(X)} of it goes to ${nm}.`,fix:{kind:'raise',lineId:l.id,from:T,to:b,amount:X}});
+  // savings
+  const bal=balances(), sav=P().accounts.filter(a=>hasRole(a,'savings')&&(bal[a.id]||0)>=X).sort((x,y)=>(bal[y.id]||0)-(bal[x.id]||0))[0];
+  if(sav) opts.push({key:'savings',title:`Take it from ${sav.name}`,text:`Moves ${money(X)} from ${sav.name} to your spending account, so the plan stays as it is. Your savings go down.`,fix:{kind:'savings',lineId:l.id,from:T,to:b,amount:X,acct:sav.id}});
+  return opts;
+}
+// the next two weeks of a daily line, before and after a fix (for the little chart)
+function fixPreview(l,fix){ const T=todayStr(), ds=dayList(T,ymd(addDays(pd(T),13))); const before=ds.map(d=>wOn(l,d));
+  const pl=plan(); pl.fixes=pl.fixes||[]; const tmp={...fix,id:'_preview'}; pl.fixes.push(tmp); planCache.clear();
+  const tgt=fix.pause&&fix.pause.lineId!==l.id?plan().lines.find(o=>o.id===fix.pause.lineId):l; const after=ds.map(d=>wOn(tgt,d)); const before2=tgt===l?before:ds.map(d=>planned(tgt,d));
+  pl.fixes.splice(pl.fixes.indexOf(tmp),1); planCache.clear(); return {ds,before:before2,after,line:tgt}; }
+
+/* ---------- the advisor: what your history says ---------- */
+// totals for the last n months (the current one first, if `withCurrent`)
+function monthsBack(n,withCurrent){ const k='mb|'+n+'|'+!!withCurrent; if(planCache.has(k)) return planCache.get(k); const out=[];
+  for(let i=withCurrent?0:1;i<=n;i++){ const an=shiftAnchor('month',todayStr(),-i), [a,b]=periodRange('month',an), list=txBetween(a,b); out.push({i,a,b,an,label:periodLabel('month',an),s:summarize(list),n:list.length}); }
+  planCache.set(k,out); return out; }
+const isFlex=t=>!(t.recurringId||t.catId==='bills'||myShare(t)>=60);
+const wAvg=(vals)=>{ const W=[.5,.3,.2]; let s=0,w=0; vals.forEach((v,i)=>{ if(v!=null){ s+=v*W[i]; w+=W[i]; } }); return w?s/w:null; };
+// next month, by category: a weighted average of the last three months (the latest counts most)
+function predictNext(){ const ms=monthsBack(4).filter(m=>m.n>0); const cats=new Set(); ms.forEach(m=>Object.keys(m.s.byCat).forEach(c=>cats.add(c)));
+  const by={}; for(const c of cats){ const v=wAvg(ms.slice(0,3).map(m=>(m.s.byCat[c]||{}).total||0)); if(v>0) by[c]=v; }
+  return {by,total:sum(Object.values(by)),months:ms.length}; }
+// how close the same guess was for last month (made from the three months before it)
+function predictAccuracy(){ const ms=monthsBack(4).filter(m=>m.n>0); if(ms.length<3) return null; const actual=ms[0].s.spent; const g=wAvg(ms.slice(1,4).map(m=>m.s.spent)); if(!(actual>0)||g==null) return null; return {guess:g,actual,pct:Math.max(0,Math.round((1-Math.abs(g-actual)/actual)*100))}; }
+// average spend on each weekday over the last 12 weeks, by category
+function weekdayPattern(catId){ const a=ymd(addDays(new Date(),-84)), b=ymd(addDays(new Date(),-1)), r=[0,0,0,0,0,0,0];
+  for(const t of txBetween(a,b)) if(t.type==='expense'&&isFlex(t)) for(const x of allocs(t)) if(!catId||x.catId===catId) r[pd(t.date).getDay()]+=x.amount/12; return r; }
+function insights(){
+  const k='ins'; if(planCache.has(k)) return planCache.get(k);
+  const out=[], T=todayStr(), [a]=periodRange('month',T), cur=summarize(txBetween(a,T)), ms=monthsBack(3).filter(m=>m.n>0), we=wkdDays();
+  const frac=(dayDiff(a,T)+1)/cycleDays(T);
+  // weekends cost more
+  for(const c of P().categories.expense){ const p=weekdayPattern(c.id); const wk=we.map(d=>p[d]), wd=[0,1,2,3,4,5,6].filter(d=>!we.includes(d)).map(d=>p[d]);
+    const W=sum(wk)/(wk.length||1), D=sum(wd)/(wd.length||1); if(W>=D*1.5&&W-D>=.5) out.push({w:(W-D)*8,tone:'info',icon:'calendar-blank',title:`Weekends cost more on ${shortCat(c)}`,text:`About ${money(W)} a weekend day against ${money(D)} on workdays — ${(W/(D||1)).toFixed(1)}× as much.`,chart:{kind:'dow',vals:p,hl:we},act:planOn()?{act:'goPlanEdit',label:'Set a weekend amount'}:{act:'goPlanEdit',label:'Make a plan'}}); }
+  // small things that add up
+  const items=[]; for(const [cid,c] of Object.entries(cur.byCat)) for(const [it,v] of Object.entries(c.items)) if(v.count>=6&&v.total/v.count<=5&&it!=='Other') items.push({cid,it,...v});
+  items.sort((x,y)=>y.total-x.total).slice(0,2).forEach(x=>{ const each=x.total/x.count, perWeek=x.count/Math.max(1,(dayDiff(a,T)+1)/7), save=each*2*52/12;
+    out.push({w:x.total,tone:'info',icon:'coffee',title:`${x.it}: ${x.count} times this month`,text:`${money(x.total)} so far, ${money(each)} each — about ${perWeek.toFixed(1)} a week. Two fewer a week saves around ${money(save)} a month.`,act:{act:'seeTx',v:x.cid,label:'See them'}}); });
+  // heading above or below your usual
+  const el=dayDiff(a,T)+1, toDate=ms.map(m=>summarize(txBetween(m.a,ymd(addDays(pd(m.a),el-1)))));
+  if(ms.length&&frac>.2) for(const c of P().categories.expense){ const usual=sum(ms,m=>(m.s.byCat[c.id]||{}).total||0)/ms.length, now=(cur.byCat[c.id]||{}).total||0, usualTD=sum(toDate,x=>(x.byCat[c.id]||{}).total||0)/ms.length;
+    if(!ms.every(m=>((m.s.byCat[c.id]||{}).count||0)>=4)) continue; // only what you buy often, every month
+    const pace=usualTD>0?usual*now/usualTD:now/frac;
+    if(usual>=15&&pace>=usual*1.2&&pace-usual>=10) out.push({w:pace-usual,tone:'warn',icon:'trend-down',title:`${shortCat(c)} is heading ${Math.round((pace/usual-1)*100)}% above your usual`,text:`At this pace about ${money(pace)} this month, against ${money(usual)} in a normal month.`,act:{act:'seeTx',v:c.id,label:'See where'}});
+    else if(usual>=15&&pace<=usual*.8&&usual-pace>=10&&frac>.4) out.push({w:(usual-pace)*.7,tone:'good',icon:'check-circle',title:`${shortCat(c)} is ${Math.round((1-pace/usual)*100)}% below your usual`,text:`On course for about ${money(pace)}, against ${money(usual)} normally. Keep it up.`}); }
+  // last month against the one before
+  if(ms.length>=2){ const [m1,m2]=ms; let best=null,worst=null; for(const c of P().categories.expense){ const d=((m1.s.byCat[c.id]||{}).total||0)-((m2.s.byCat[c.id]||{}).total||0); if(!best||d<best.d) best={c,d}; if(!worst||d>worst.d) worst={c,d}; }
+    if(best&&best.d<=-10) out.push({w:-best.d*.6,tone:'good',icon:'check-circle',title:`You cut ${shortCat(best.c)} by ${money(-best.d)}`,text:`${m1.label} against ${m2.label}. That’s a real change — keep it going.`});
+    if(worst&&worst.d>=10) out.push({w:worst.d*.6,tone:'warn',icon:'warning',title:`${shortCat(worst.c)} went up ${money(worst.d)}`,text:`${m1.label} against ${m2.label}. Worth a plan line if it keeps growing.`,act:{act:'goPlanEdit',label:'Plan it'}}); }
+  // most expensive weekday
+  { const p=weekdayPattern(null), mx=Math.max(...p), i=p.indexOf(mx), avg=sum(p)/7; if(avg>0&&mx>=avg*1.4) out.push({w:(mx-avg)*6,tone:'info',icon:'calendar-check',title:`Your most expensive day: ${DOW[i]}`,text:`About ${money(mx)} on that day, against ${money(avg)} on an average day.`,chart:{kind:'dow',vals:p,hl:[i]}}); }
+  // the biggest category with no plan
+  if(ms.length){ const planned=new Set(planOn()?plan().lines.filter(l=>!l.item).map(l=>l.catId):[]); const top=P().categories.expense.map(c=>({c,v:sum(ms,m=>(m.s.byCat[c.id]||{}).total||0)/ms.length})).filter(x=>!planned.has(x.c.id)&&x.c.id!=='bills').sort((x,y)=>y.v-x.v)[0];
+    if(top&&top.v>=20) out.push({w:top.v*.3,tone:'info',icon:'target',title:`${shortCat(top.c)} has no plan`,text:`You usually spend ${money(top.v)} a month on it. A plan line shows what’s left each day or week.`,act:{act:'goPlanEdit',label:'Add it to my plan'}}); }
+  // savings rate
+  if(ms.length>=2){ const r=ms.map(m=>m.s.income>0?(m.s.income-m.s.spent)/m.s.income:null); if(r[0]!=null&&r[1]!=null&&Math.abs(r[0]-r[1])>=.05) out.push({w:Math.abs(r[0]-r[1])*100,tone:r[0]>r[1]?'good':'warn',icon:'piggy-bank',title:r[0]>r[1]?`You kept ${Math.round(r[0]*100)}% of your income`:`You kept ${Math.round(r[0]*100)}% of your income, down from ${Math.round(r[1]*100)}%`,text:r[0]>r[1]?`Up from ${Math.round(r[1]*100)}% the month before.`:`Spending grew faster than income in ${ms[0].label}.`}); }
+  out.sort((x,y)=>y.w-x.w); planCache.set(k,out); return out;
+}
+
 function advance(r,dateStr){
   const d=pd(dateStr);
   if(r.freq==='weekly') return ymd(addDays(d,7));
@@ -495,6 +716,10 @@ function render(full=true){
   else if(tab==='goalnew') m.innerHTML=viewGoalNew4();
   else if(tab==='acct') m.innerHTML=viewAcct4();
   else if(tab==='month') m.innerHTML=viewMonth4();
+  else if(tab==='plan') m.innerHTML=viewPlan4();
+  else if(tab==='planedit') m.innerHTML=viewPlanEdit4();
+  else if(tab==='pline') m.innerHTML=viewPline4();
+  else if(tab==='advisor') m.innerHTML=viewAdvisor4();
   else m.innerHTML=viewSettings();
   if(animate){ m.classList.remove('anim','push'); void m.offsetWidth; m.classList.add(pushed?'push':'anim'); clearTimeout(render._t); render._t=setTimeout(()=>m.classList.remove('anim','push'),800); }
   if(!full) window.scrollTo(0,sy);
@@ -630,21 +855,18 @@ function openTxView(id){
 }
 function openWhatsNew(){
   const row=(icon,t,d,act,btn,v)=>`<div class="wn4">${tileHTML({html:ic(icon),color:'#EDBB00'})}<div><b>${t}</b><p>${d}</p>${act?`<button class="w-pill card" data-act="${act}"${v?` data-v="${v}"`:''}>${btn}</button>`:''}</div></div>`;
-  sheet4(`<div class="bl4-h" style="padding:14px 20px 4px"><h3>What’s new in Masroof</h3></div><p class="hint" style="margin:0 20px 6px">Version <span data-notr>${APP_VERSION}</span> — every account, and what each entry counts as.</p>
+  sheet4(`<div class="bl4-h" style="padding:14px 20px 4px"><h3>What’s new in Masroof</h3></div><p class="hint" style="margin:0 20px 6px">Version <span data-notr>${APP_VERSION}</span> — a plan for your month, and advice from your own spending.</p>
     <div class="wn4s">
+    ${row('target','My plan','Add your salary and what you expect to spend — a day, a week or a month, with different amounts on weekends. See what’s left each day; what you don’t spend moves to the days ahead.','tab','Open my plan','plan')}
+    ${row('arrow-clockwise','Ways back when you go over','Spread it to the end of the month, catch up in one or two weeks, skip fuel or fun for a while, or use what other lines saved, unplanned salary or savings — you choose.')}
+    ${row('sparkle','Advisor','Predicts this month and next, spots weekend habits and small things that add up, and shows how your months change.','tab','Open','advisor')}
+    ${row('hand-coins','Loans paid back monthly','Lend or borrow with monthly payments: Masroof keeps the schedule and shows the next one in Coming up.')}
+    <p class="hint" style="margin:8px 4px 0">Also in 4.1</p>
     ${row('arrows-left-right','Transfers between your accounts','When money leaves one of your accounts and arrives in another — even a day or two later — the two bank messages become one transfer. It isn’t counted as spending or income.','tab','Bank messages','sms')}
     ${row('chat-text','Spending, income or a transfer?','A message that says “transfer” asks where it went: your other account, a friend, or spending. Credit card payments and cash deposits are recognised as money moved.')}
     ${row('bank','A statement for each account','Tap an account to see money in and out this month, money moved, the balance after each entry, and whether it matches your bank.','tab','Accounts','accounts')}
     ${row('chart-bar','This month','Income, spending, what you saved and what’s left, each budget, each account and what’s coming up.','goMonth','Open')}
     ${row('info','What each entry counts as','Open any entry to see how it counts. If it was really a transfer to your other account, change it with one tap.')}
-    <p class="hint" style="margin:8px 4px 0">Also in 4.0</p>
-    ${row('cards','A new design','Night and Day editions, your cards in a stack, a gold ＋ for adding, and everything one or two taps away.','tab','Open Settings','settings')}
-    ${row('backspace','Add with a keypad','Type the amount on the keypad at the bottom of the sheet. Or write “karak 0.2 cash” or “coffee 15 aed” in What or where.','add','Add something')}
-    ${row('chat-text','Bank messages, one card at a time','Swipe right to add a message, left to skip it, or confirm all the sure ones at once. Messages waiting are kept, encrypted, until you get to them.','tab','Open','sms')}
-    ${row('list-bullets','Activity','Search shops, notes or amounts, and filter Spent, Received or With bills. More filters and the calendar are behind the slider button.','tab','Open','tx')}
-    ${row('target','Goals in four steps','What it’s for, how much and by when, where it’s kept and how you’ll save — with the monthly amount worked out for you.','goalNew','New goal')}
-    ${row('lock-key','A keypad to unlock','If your passcode is digits only, unlock with a round keypad. Other passcodes still use the keyboard.')}
-    ${row('user-circle','You','Accounts, Friends, Bank messages, the map, reminders and the monthly report live in the You tab. Settings are in five groups.','tab','Open','you')}
     </div>`,`<button class="w-btn" data-act="close">Got it</button>`,'wn4sheet');
 }
 /* updates: version.json on the site says which version is newest */
@@ -779,13 +1001,13 @@ function openTx(id,preset){
       tax:t.tax?String(t.tax):'',taxMode:'amt',service:t.service?String(t.service):'',serviceMode:'amt',discount:t.discount?String(t.discount):'',
       split:t.split?{on:true,paidBy:t.split.paidBy||'me',who:t.split.shares.map(s=>s.who),mode:t.split.mode||'equal',custom:Object.fromEntries(t.split.shares.map(s=>[s.who,String(s.amount)]))}:{on:false,paidBy:'me',who:['me'],mode:'equal',custom:{}},
       fx:t.fx?{on:true,cur:t.fx.cur,orig:String(t.fx.orig),rate:String(t.fx.rate),auto:!!t.fx.est}:{on:false,cur:defFx(),orig:'',rate:'',auto:true},
-      personId:t.personId||'',due:t.due||'',debtKind:t.debtKind||(t.dir==='receive'?'borrowed':'lent'),investmentId:t.investmentId||'',invDir:t.dir||'buy',units:t.units?String(t.units):'',
+      personId:t.personId||'',due:t.due||'',ppOn:!!t.payPlan,ppAmt:t.payPlan?String(t.payPlan.amt):'',ppFirst:t.payPlan?t.payPlan.first:'',debtKind:t.debtKind||(t.dir==='receive'?'borrowed':'lent'),investmentId:t.investmentId||'',invDir:t.dir||'buy',units:t.units?String(t.units):'',
       receipt:t.receipt||null,bill:t.bill||'',_origAmt:t.imported?t.amount:null,auto:t.auto,demo:t.demo,recurringId:t.recurringId,ts:t.ts,imported:t.imported,refund:!!t.refund,inst:t.inst,repeatCount:''};
   } else {
     const acc=defaultAcct(); const save=(P().accounts.find(a=>hasRole(a,'savings')&&a.id!==acc)||P().accounts.find(a=>a.id!==acc)||{}).id;
     draft={id:null,type:'expense',amount:'',catId:null,item:'',accountId:acc,toAccountId:save,date:todayStr(),note:'',tags:'',manual:false,repeat:false,freq:'monthly',
       itemized:false,lines:[],tax:'',taxMode:'pct',service:'',serviceMode:'pct',discount:'',split:{on:false,paidBy:'me',who:['me'],mode:'equal',custom:{}},fx:{on:false,cur:defFx(),orig:'',rate:'',auto:true},
-      personId:(P().people[0]||{}).id||'',due:'',debtKind:'lent',investmentId:(P().investments[0]||{}).id||'',invDir:'buy',units:'',receipt:null,refund:false,repeatCount:''};
+      personId:(P().people[0]||{}).id||'',due:'',ppOn:false,ppAmt:'',ppFirst:ymd(addDays(new Date(),30)),debtKind:'lent',investmentId:(P().investments[0]||{}).id||'',invDir:'buy',units:'',receipt:null,refund:false,repeatCount:''};
     if(preset==='split'){draft.split.on=true;}
     else if(preset==='lend'){draft.type='debt';}
     else if(preset==='transfer'){draft.type='transfer';}
@@ -950,9 +1172,13 @@ function debtBody(d){
   return lab4('What happened?')+`<div class="w-chips add4-kind">${[['lent','I lent money'],['repaid_in','They paid me back'],['borrowed','I borrowed'],['repaid_out','I paid them back']].map(([v,l])=>`<button class="w-chip" data-act="dKind" data-v="${v}" aria-pressed="${d.debtKind===v}">${l}</button>`).join('')}</div>
   ${lab4('Person')}<div class="add4-row">${P().people.length?`<select class="sel" data-f="personId">${peopleOptions(d.personId)}</select>`:''}<span class="inline-add"><input class="inp" id="dbNew" placeholder="New person"><button class="w-chip" data-act="dbAddPerson">Add</button></span></div>
   ${acctChips(d,'accountId',DEBT_KIND[d.debtKind][0]==='give'?'From account':'Into account')}${dateChips(d)}
-  ${d.debtKind==='lent'||d.debtKind==='borrowed'?`<div class="field add4-f"><label for="due">${d.debtKind==='lent'?'They’ll pay back by':'I’ll pay back by'} (optional)</label><input id="due" class="inp" type="date" value="${esc(d.due||'')}" data-f="due"></div>`:''}
+  ${d.debtKind==='lent'||d.debtKind==='borrowed'?`<div class="add4-card">${tog4('ppOn','calendar-check',d.debtKind==='lent'?'They pay me back monthly':'I pay back monthly',d.ppOn)}</div>
+    ${d.ppOn?`<div class="two add4-f"><div class="field"><label for="ppAmt">Each month (${esc(cur())})</label><input id="ppAmt" class="inp" inputmode="decimal" value="${esc(d.ppAmt||'')}" data-f="ppAmt" placeholder="e.g. 50"></div><div class="field"><label for="ppFirst">First payment</label><input id="ppFirst" class="inp" type="date" value="${esc(d.ppFirst||'')}" data-f="ppFirst"></div></div><p class="hint add4-hint" id="ppHint">${esc(ppHint(d))}</p>`
+    :`<div class="field add4-f"><label for="due">${d.debtKind==='lent'?'They’ll pay back by':'I’ll pay back by'} (optional)</label><input id="due" class="inp" type="date" value="${esc(d.due||'')}" data-f="due"></div>`}`:''}
   ${lab4('Note')}${noteField(d,'Note','e.g. for the car repair')}<p class="hint add4-hint">This isn’t counted as spending or income — it just moves money and updates what you and ${d.personId?esc(personName(d.personId)):'they'} owe each other.</p>`;
 }
+function ppHint(d){ const A=num(d.amount), m=num(d.ppAmt); if(!(A>0&&m>0)) return 'Masroof works out each payment date and shows what’s been paid.'; const n=Math.ceil(A/m-1e-9), f=pd(d.ppFirst||ymd(addDays(new Date(),30))), last=ymd(dayIn(f.getFullYear(),f.getMonth()+n-1,f.getDate()));
+  return n===1?`One payment of ${money(A)} on ${shortD(last)}.`:`${n} payments of ${money(m)}${A-m*(n-1)<m-1e-9?` (the last ${money(round(A-m*(n-1),dec()))})`:''}, the last on ${fmtD(last,{day:'numeric',month:'short',year:'numeric'})}.`; }
 function investBody(d){ if(d.repeat) d._more=true;
   return `<div class="w-seg add4-sub2" role="group" aria-label="Buy or sell">${[['buy','Put money in'],['sell','Take money out']].map(([v,l])=>`<button data-act="dInv" data-v="${v}" aria-pressed="${d.invDir===v}">${l}</button>`).join('')}</div>
   ${lab4('Investment')}<div class="add4-row">${P().investments.length?`<select class="sel" data-f="investmentId">${P().investments.map(h=>`<option value="${esc(h.id)}"${h.id===d.investmentId?' selected':''}>${esc(h.name)}</option>`).join('')}</select>`:''}<span class="inline-add"><input class="inp" id="invNew" placeholder="New, e.g. Gold"><button class="w-chip" data-act="invAdd">Add</button></span></div>
@@ -960,7 +1186,7 @@ function investBody(d){ if(d.repeat) d._more=true;
 }
 function updateCalc(){
   const d=draft; if(!d||!$('#dlg .add4')) return;
-  const c=calc(d); updAdd4(c);
+  const c=calc(d); updAdd4(c); { const h=$('#ppHint'); if(h){ h.textContent=ppHint(d); trTree(h); } }
   if(d.itemized&&d.type==='expense'){ c.lineTotals.forEach((v,i)=>{const e=$('#lt-'+i); if(e) e.textContent=v?money(v):'';});
     const set=(id,v)=>{const e=$(id); if(e) e.textContent=v}; set('#subT',money(c.subtotal)); set('#taxT',d.taxMode==='pct'&&c.taxAmt?'= '+money(c.taxAmt):''); set('#svcT',d.serviceMode==='pct'&&c.serviceAmt?'= '+money(c.serviceAmt):''); set('#totT',money(c.total)+' '+cur());
     const hint=$('#scanTotHint'); if(hint) hint.textContent=d._scanTotal&&Math.abs(d._scanTotal-c.total)>10**-dec()*5?`The bill’s total is ${money(d._scanTotal)} — check the items, VAT or discount.`:d._origAmt&&Math.abs(d._origAmt-c.total)>10**-dec()*5?`Your bank recorded ${money(d._origAmt)} — check the items, VAT or discount.`:''; }
@@ -976,7 +1202,8 @@ function setPath(o,path,v){const ks=path.split('.');let x=o;for(let i=0;i<ks.len
 
 function alertSnapshot(){
   const t=todayStr(); const [a,b]=periodRange('month',t); const s=summarize(txBetween(a,b));
-  return {day:todayStatus(),cats:Object.fromEntries(Object.entries(s.byCat).map(([k,v])=>[k,v.total]))};
+  planCache.clear();
+  return {day:todayStatus(),cats:Object.fromEntries(Object.entries(s.byCat).map(([k,v])=>[k,v.total])),plan:planOn()?Object.fromEntries(plan().lines.map(l=>{ const st=lineStatus(l); return [l.id,{left:st.left,over:st.over}]; })):{}};
 }
 function checkAlerts(pre,tx){
   if(!tx||tx.type!=='expense') return;
@@ -989,7 +1216,12 @@ function checkAlerts(pre,tx){
   if(inThisCycle(tx.date)) for(const id of Object.keys(P().budgets)){ const bud=budgetFor(id,todayStr()); if(!(bud>0)) continue; const b4=pre.cats[id]||0, af=post.cats[id]||0;
     if(b4<=bud&&af>bud) msgs.push(`${cat(id).name} is over its monthly budget by ${money(af-bud)}`);
     else if(b4<bud*.9&&af>=bud*.9&&af<=bud) msgs.push(`${cat(id).name}: 90% of the monthly budget used`); }
-  if(msgs.length) setTimeout(()=>toast(msgs.join(' · '),{bad:post.day.left<0}),250);
+  // your plan: a daily line gone over today, or a line now over plan
+  let planBad=false; if(planOn()&&inThisCycle(tx.date)) for(const l of plan().lines){ const a=pre.plan[l.id], b=post.plan[l.id]; if(!a||!b||!allocs(tx).some(x=>x.catId===l.catId&&(!l.item||x.item===l.item))) continue;
+    if(b.over>0&&!(a.over>0)){ msgs.push(`${lineName(l)} is ${money(b.over)} over plan — open My plan to choose how to get back`); planBad=true; }
+    else if(l.period==='day'&&tx.date===todayStr()&&a.left>=0&&b.left<0){ msgs.push(`${lineName(l)}: ${money(-b.left)} over today — the days left get a little less`); planBad=true; }
+    else if(l.period!=='day'&&a.left>=0&&b.left<0){ msgs.push(`${lineName(l)}: ${money(-b.left)} over ${l.period==='week'?'this week':'this month'}`); planBad=true; } }
+  if(msgs.length) setTimeout(()=>toast(msgs.join(' · '),{bad:post.day.left<0||planBad}),250);
 }
 function showOverAlert(st){
   const L=P().limits; let tomorrow='';
@@ -1027,7 +1259,9 @@ async function saveDraft(){
   if(d.type==='expense'&&d.split.on) tx.split={paidBy:d.split.paidBy,mode:d.split.mode==='items'&&!d.itemized?'equal':d.split.mode,shares:d.split.who.map(w=>({who:w,amount:c.shares[w]||0}))};
   if(d.fx.on&&(d.type==='expense'&&!d.itemized||d.type==='income')){ tx.fx={cur:d.fx.cur,orig:num(d.fx.orig),rate:num(d.fx.rate)}; if(d.fx.auto) tx.fx.est=true; P().lastFx=d.fx.cur; }
   if(d.type==='transfer') tx.toAccountId=d.toAccountId;
-  if(d.type==='debt'){ tx.personId=d.personId; tx.debtKind=d.debtKind; tx.dir=DEBT_KIND[d.debtKind][0]; if(d.due&&(d.debtKind==='lent'||d.debtKind==='borrowed')) tx.due=d.due; }
+  if(d.type==='debt'){ tx.personId=d.personId; tx.debtKind=d.debtKind; tx.dir=DEBT_KIND[d.debtKind][0];
+    if((d.debtKind==='lent'||d.debtKind==='borrowed')&&d.ppOn&&num(d.ppAmt)>0){ const m=round(num(d.ppAmt),dp), f=d.ppFirst||ymd(addDays(pd(d.date),30)), n=Math.ceil(tx.amount/m-1e-9), fd0=pd(f); tx.payPlan={amt:m,first:f}; tx.due=ymd(dayIn(fd0.getFullYear(),fd0.getMonth()+n-1,fd0.getDate())); }
+    else if(d.due&&(d.debtKind==='lent'||d.debtKind==='borrowed')) tx.due=d.due; }
   if(d.type==='invest'){ tx.investmentId=d.investmentId; tx.dir=d.invDir; if(num(d.units)) tx.units=num(d.units); }
   for(const k of ['auto','demo','recurringId','imported','inst']) if(d[k]) tx[k]=d[k];
   if(d.type==='expense'&&d.refund){ tx.refund=true; delete tx.split; }
@@ -1690,6 +1924,8 @@ function loadDemo(){
     if(day===5){ push({type:'expense',amount:rnd(18,45),date:ds,accountId:bank,catId:'bills',item:'Electricity',note:'Nama electricity'}); push({type:'expense',amount:rnd(7,14),date:ds,accountId:bank,catId:'bills',item:'Water',note:'Water bill'}); }
     if(day===8){ push({type:'expense',amount:20,date:ds,accountId:bank,catId:'bills',item:'Internet',note:'Awasr fibre'}); push({type:'expense',amount:10,date:ds,accountId:card,catId:'bills',item:'Mobile',note:'Omantel'}); }
     if(day===12) push({type:'expense',amount:3.5,date:ds,accountId:card,catId:'fun',item:'Subscriptions',note:'Netflix'});
+    if((dow===5||dow===6)&&Math.random()<.55) push({type:'expense',amount:rnd(3.5,7),date:ds,accountId:card,catId:'fun',item:pick(['Cinema','Outings','Games']),note:pick(['VOX Cinemas','Novo Cinemas','Bowling','Snow Oman'])});
+    if(dow!==5&&dow!==6&&Math.random()<.12) push({type:'expense',amount:rnd(1,3),date:ds,accountId:card,catId:'fun',item:'Games',note:'PlayStation Store'});
     if(Math.random()<.05) push({type:'expense',amount:rnd(8,45),date:ds,accountId:card,catId:'shopping',item:pick(['Clothes','Electronics','Perfume','Shoes']),note:pick(['City Centre','Amazon','Noon'])});
     if(Math.random()<.04) push({type:'expense',amount:rnd(2,12),date:ds,accountId:cash,catId:'health',item:'Pharmacy',note:'Muscat Pharmacy'});
     if(day===24) push({type:'income',amount:1200,date:ds,accountId:bank,catId:'salary',item:'Monthly salary',note:'Salary'});
@@ -1711,11 +1947,16 @@ function loadDemo(){
   fund.history=[{date:ymd(addDays(end,-3)),value:round(sum(allTx().filter(t=>t.investmentId===fund.id),t=>t.amount)*1.04,dp)}];
   if(P().limits.mode==='off'){P().limits.mode='smart';P().limits.monthly=450;}
   if(!Object.keys(P().budgets).length){ P().budgets={food:120,groceries:110,shopping:60,transport:50}; P().demoBudgets=true; }
+  push({type:'debt',amount:300,date:ymd(addDays(end,-50)),accountId:bank,personId:ali.id,debtKind:'lent',dir:'give',note:'Laptop',payPlan:{amt:50,first:ymd(addDays(end,-20))},due:ymd(addDays(end,130))});
+  push({type:'debt',amount:50,date:ymd(addDays(end,-19)),accountId:bank,personId:ali.id,debtKind:'repaid_in',dir:'receive',note:'Payment 1 of 6'});
+  if(!P().plan){ P().plan={salary:1200,weekend:[5,6],pool:'month',demo:true,fixes:[],lines:[
+    {id:'l_demo_food',catId:'food',item:'',period:'day',amt:4,wkd:6},{id:'l_demo_coffee',catId:'food',item:'Coffee',period:'day',amt:.8,wkd:1.5},{id:'l_demo_fun',catId:'fun',item:'',period:'day',amt:.5,wkd:4},
+    {id:'l_demo_fuel',catId:'transport',item:'Fuel',period:'week',amt:9},{id:'l_demo_groc',catId:'groceries',item:'',period:'week',amt:25},{id:'l_demo_rent',catId:'bills',item:'Rent',period:'month',amt:250},{id:'l_demo_shop',catId:'shopping',item:'',period:'month',amt:60}]}; P().demoPlan=true; }
   touched.forEach(persistMonth); persist('profile'); toast('Demo data added — remove it any time in Settings'); render();
 }
 function clearDemo(){
   for(const [k,arr] of Object.entries(state.months)){const n=arr.length;state.months[k]=arr.filter(t=>!t.demo);if(state.months[k].length!==n)persistMonth(k);}
-  const p=P(); if(p.demoBudgets){ p.budgets={}; delete p.demoBudgets; }
+  const p=P(); if(p.demoBudgets){ p.budgets={}; delete p.demoBudgets; } if(p.demoPlan){ delete p.plan; delete p.demoPlan; }
   for(const a of p.accounts) if(a.demoTheme){ delete a.bank; delete a.demoTheme; delete a.color; a.roles=a.type==='savings'?['savings']:['spending']; }
   p.people=p.people.filter(x=>!x.demo); p.investments=p.investments.filter(x=>!x.demo); p.goals=p.goals.filter(x=>!x.demo); persist('profile');
   toast('Demo data removed'); render();
@@ -1928,8 +2169,25 @@ document.addEventListener('click',async e=>{
   const a=el.dataset.act,v=el.dataset.v,u=state.ui,p=P(),d=draft;
   switch(a){
     /* navigation & home */
-    case 'tab': go4(v); break;
-    case 'back': if(u.tab==='acct'&&u.acctFrom){ const f=u.acctFrom; u.acctFrom=null; go4(f); break; } if(u.tab==='month'&&u.monthFrom){ const f=u.monthFrom; u.monthFrom=null; go4(f); break; } go4(u.back&&!PUSH4.includes(u.back)?u.back:'home'); break;
+    case 'tab': if(['plan','advisor'].includes(v)) pushTo(v); else go4(v); break;
+    /* my plan */
+    case 'goPlanEdit': u.pe=null; pushTo('planedit'); break;
+    case 'pline': u.plId=v; pushTo('pline'); break;
+    case 'planFix': openRecover(v); break;
+    case 'fixPick': { const o=(u.rcOpts||[])[+v]; if(!o||!planOn()) break; const f={...o.fix,id:newId(),made:todayStr(),label:o.title}; let txId=null;
+      if(f.kind==='savings'){ const to=salaryAcct(); const t={id:newId(),type:'transfer',amount:f.amount,date:todayStr(),accountId:f.acct,toAccountId:to,note:'From savings for my plan',ts:Date.now()}; (state.months[t.date.slice(0,7)]||(state.months[t.date.slice(0,7)]=[])).push(t); txId=t.id; f.txId=txId; }
+      (plan().fixes||(plan().fixes=[])).push(f); persist('profile'); $('#dlg').close(); render();
+      toast('Plan chosen — your daily amounts are updated',{undo:()=>{ plan().fixes=plan().fixes.filter(x=>x.id!==f.id); if(txId) removeIds([txId]); persist('profile'); render(); }}); break; }
+    case 'fixCancel': { const f=fixes().find(x=>x.id===v); if(!f) break; plan().fixes=plan().fixes.filter(x=>x.id!==v); persist('profile'); render(false); toast('Plan cancelled',{undo:()=>{ plan().fixes.push(f); persist('profile'); render(false); }}); break; }
+    case 'peWkd': { const e=u.pe; if(!e) break; const i=+v; e.weekend=e.weekend.includes(i)?e.weekend.filter(x=>x!==i):[...e.weekend,i]; { const y=window.scrollY; render(); window.scrollTo(0,y); } break; }
+    case 'pePool': if(u.pe){ u.pe.pool=v; const y=window.scrollY; render(); window.scrollTo(0,y); } break;
+    case 'pePer': { const [i,k]=v.split(':'); const l=u.pe&&u.pe.lines[+i]; if(!l) break; l.period=k; const us=usualLine(l); l.amt=String(us.amt||''); l.wkd=k==='day'&&us.wkd!=null?String(us.wkd):''; const y=window.scrollY; render(); window.scrollTo(0,y); break; }
+    case 'peUsual': { const l=u.pe&&u.pe.lines[+v]; if(!l) break; const us=usualLine(l); l.amt=String(us.amt); l.wkd=us.wkd!=null?String(us.wkd):''; const y=window.scrollY; render(); window.scrollTo(0,y); break; }
+    case 'peDel': if(u.pe){ u.pe.lines.splice(+v,1); const y=window.scrollY; render(); window.scrollTo(0,y); } break;
+    case 'peAdd': { if(!u.pe) break; const [c,it,per]=v?v.split('|'):[(P().categories.expense.find(x=>!u.pe.lines.some(l=>l.catId===x.id&&!l.item))||P().categories.expense[0]).id,'','month']; const l={id:newId(),catId:c,item:it||'',period:per||'month'}; const us=usualLine(l); l.amt=String(us.amt||''); l.wkd=us.wkd!=null?String(us.wkd):''; u.pe.lines.push(l); render(); window.scrollTo(0,document.body.scrollHeight); break; }
+    case 'peSave': savePlanDraft(); break;
+    case 'peRemove': if(await ask('Delete your plan? Your spending stays; only the plan and its daily amounts go.','Delete')){ delete p.plan; u.pe=null; persist('profile'); u.navStack=[]; go4('home'); toast('Plan deleted'); } break;
+    case 'back': if(u.navStack&&u.navStack.length&&['plan','planedit','pline','advisor'].includes(u.tab)){ go4(u.navStack.pop()); break; } if(u.tab==='acct'&&u.acctFrom){ const f=u.acctFrom; u.acctFrom=null; go4(f); break; } if(u.tab==='month'&&u.monthFrom){ const f=u.monthFrom; u.monthFrom=null; go4(f); break; } go4(u.back&&!PUSH4.includes(u.back)?u.back:'home'); break;
     case 'rowDup': closeRow(); if(fd&&fd.kind==='txview'&&$('#dlg').open) $('#dlg').close(); duplicateTx(v); break;
     case 'rowNoop': break;
     case 'txCal': u.txCal=!u.txCal; u.txDay=null; if(u.txCal&&(!u.txM||u.txM==='all')) u.txM=u.txMonth=todayStr().slice(0,7); buzz(5); { const y=window.scrollY; render(); window.scrollTo(0,y); } break;
@@ -2028,6 +2286,7 @@ document.addEventListener('click',async e=>{
     case 'pDelete': { const used=personTx(fd.id).length; if(await ask(used?'This person has shared history. Past entries stay but show as “Someone”. Delete?':'Delete this person?','Delete')){ p.people=p.people.filter(x=>x.id!==fd.id); persist('profile'); $('#dlg').close(); render(); } break; }
     case 'pSettle': { const bal=Math.abs(peopleBalances()[fd.id]||0); openTx(null,{type:'debt',personId:fd.id,debtKind:v==='in'?'repaid_in':'repaid_out',amount:String(round(bal,dec()))}); break; }
     case 'pLend': openTx(null,{type:'debt',personId:fd.id,debtKind:'lent'}); break;
+    case 'pInst': { const x=loanPlans().find(z=>z.tx.id===v); if(!x||x.done) break; openTx(null,{type:'debt',personId:x.personId,debtKind:x.kind==='lent'?'repaid_in':'repaid_out',amount:String(round(x.next.amt-x.next.got,dec())),accountId:x.tx.accountId,note:`Payment ${x.k} of ${x.n}`}); break; }
     case 'pBorrow': openTx(null,{type:'debt',personId:fd.id,debtKind:'borrowed'}); break;
     case 'pSplit': openTx(null,{split:{on:true,paidBy:'me',who:['me',fd.id],mode:'equal',custom:{}}}); break;
     case 'pRemind': { const x=person(fd.id); const bal=peopleBalances()[fd.id]||0; const msg=`Hi ${x.name}, just a friendly reminder: you owe me ${cur()} ${money(bal,{show:true})}. Thanks!`;
@@ -2196,12 +2455,13 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='p1'){ const st=strengthOf(t.value); const bar=$('#pStr'); if(bar){bar.style.width=(t.value?Math.max(8,st*25):0)+'%'; bar.style.background=['var(--spend)','var(--spend)','var(--warn)','var(--brand)','var(--earn)'][st];} return; }
-  if(t.dataset.f&&draft){ if(t.type==='checkbox') return; setPath(draft,t.dataset.f,t.value); if(t.dataset.f==='fx.rate'&&draft.fx.auto){ draft.fx.auto=false; const h=$('#dlg .fxhint'); if(h) h.innerHTML=fxHint(draft); }
+  if(t.dataset.f&&draft){ if(t.type==='checkbox') return; setPath(draft,t.dataset.f,t.value); if(/^pp/.test(t.dataset.f)){ const h=$('#ppHint'); if(h){ h.textContent=ppHint(draft); trTree(h); } return; } if(t.dataset.f==='fx.rate'&&draft.fx.auto){ draft.fx.auto=false; const h=$('#dlg .fxhint'); if(h) h.innerHTML=fxHint(draft); }
     if(t.dataset.f==='note'&&!draft.manual&&(draft.type==='expense'||draft.type==='income')&&!draft.itemized){ const g=guessCategory(t.value,draft.type); const before=draft.catId+'|'+draft.item;
       if(g){draft.catId=g.catId;draft.item=g.item||'';} if(before!==draft.catId+'|'+draft.item){ const w=$('#catWrap'); if(w){ w.innerHTML=catPicker(draft,draft.type); updateCalc(); return; } const pos=t.selectionStart;renderTxDlg();const n=$('#note');n.focus();n.setSelectionRange(pos,pos);return;} }
     updateCalc(); return; }
   if(t.dataset.fd&&fd){ fd[t.dataset.fd]=t.value; if(t.hasAttribute('data-live')) updateAcctPreview(); if(fd.kind==='goal'){ const h=$('#goalHint'); if(h) h.innerHTML=goalHintHTML(); } return; }
   if(t.dataset.bulk&&fd&&fd.kind==='bulk'){ const [i,k]=t.dataset.bulk.split('.'); if(fd.rows[+i]) fd.rows[+i][k]=t.value; return; }
+  if(t.dataset.pe&&state.ui.pe){ const e=state.ui.pe, k=t.dataset.pe; if(k==='payday') return; if(/\.what$/.test(k)) return; setPath(e,k,t.value); const sm=$('#peSum'); if(sm) sm.innerHTML=peSumHTML(); return; }
   if(t.dataset.input==='txQ'){ state.ui.txQ=t.value; renderTxList(); return; }
   if(t.dataset.gn&&state.ui.gn){ const g=state.ui.gn; g[t.dataset.gn]=t.value; if(t.dataset.gn==='amt') g.amtSet=true; if(t.dataset.gn==='date'){ g.months='custom'; const y=window.scrollY; render(); window.scrollTo(0,y); return; } const h=$('#gnHint'); if(h){ const tx=gnHint(g); h.hidden=!tx; h.querySelector('span').textContent=tx; } return; }
   if(t.matches('[data-imptext]')){ imp.text=t.value; return; }
@@ -2213,6 +2473,9 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const t=e.target,u=state.ui,p=P();
   if(t.id==='note'&&draft&&$('#dlg .add4')&&noteQuick4(t)) return;
+  if(t.dataset.pe&&state.ui.pe){ const e=state.ui.pe, k=t.dataset.pe;
+    if(k==='payday'){ e.payday=+t.value; return; }
+    if(/\.what$/.test(k)){ const i=+k.split('.')[1], [c,it]=t.value.split('|'); const l=e.lines[i]; l.catId=c; l.item=it||''; const us=usualLine(l); l.amt=String(us.amt||''); l.wkd=us.wkd!=null?String(us.wkd):''; const y=window.scrollY; render(); window.scrollTo(0,y); return; } return; }
   if(t.hasAttribute('data-pname')){ P().name=t.value.trim().slice(0,30); persist('profile'); toast('Saved'); render(false); return; }
   if(t.dataset.f&&draft){ const val=t.type==='checkbox'?t.checked:t.value; setPath(draft,t.dataset.f,val);
     if(t.dataset.f==='itemized'&&val&&!draft.lines.length){ draft.lines=[{...blankLine(draft.catId),name:draft.note||'',price:draft.amount||'',item:draft.item||''}]; draft.fx.on=false; }
@@ -2712,9 +2975,11 @@ const cardBg=c=>`linear-gradient(140deg,rgba(255,255,255,.14),rgba(0,0,0,.35)),$
 const shortCat=c=>(c&&c.name||'').replace(/ &.*$|,.*$/,'').split(' ').slice(0,2).join(' ');
 
 /* --- navigation: four tabs, and screens pushed on top of them --- */
-const TABS4=['home','tx','wealth','you'], PUSH4=['people','settings','accounts','sms','goalnew','acct','month'];
+const TABS4=['home','tx','wealth','you'], PUSH4=['people','settings','accounts','sms','goalnew','acct','month','plan','planedit','pline','advisor'];
 function go4(v){ const u=state.ui; if($('#dlg').open&&!$('#dlg .add4')) $('#dlg').close();
-  if(v==='sms'&&u.tab!=='sms'){ u.smsDone=0; u.smsAllCats=false; if(!u.smsSeen&&(P().smsQueue||[]).length){ u.smsSeen=true; u.smsLoading=true; setTimeout(()=>{ u.smsLoading=false; if(u.tab==='sms') render(); },1500); } } if(PUSH4.includes(v)&&!PUSH4.includes(u.tab)) u.back=u.tab; if(TABS4.includes(v)) u.back=null; u.tab=v; if(v==='home') u.cuFrom=0; render(); window.scrollTo(0,0); }
+  if(v==='sms'&&u.tab!=='sms'){ u.smsDone=0; u.smsAllCats=false; if(!u.smsSeen&&(P().smsQueue||[]).length){ u.smsSeen=true; u.smsLoading=true; setTimeout(()=>{ u.smsLoading=false; if(u.tab==='sms') render(); },1500); } } if(PUSH4.includes(v)&&!PUSH4.includes(u.tab)) u.back=u.tab; if(TABS4.includes(v)){ u.back=null; u.navStack=[]; } u.tab=v; if(v==='home') u.cuFrom=0; render(); window.scrollTo(0,0); }
+// open a screen on top of the current one; Back returns to it
+function pushTo(v){ const u=state.ui; u.navStack=u.navStack||[]; if(PUSH4.includes(u.tab)&&u.tab!==v) u.navStack.push(u.tab); else if(!PUSH4.includes(u.tab)) u.navStack=[]; go4(v); }
 function tabbarHTML(){
   const t=(id,label,icon)=>`<button data-tab="${id}" aria-current="${state.ui.tab===id?'page':'false'}">${ic(icon,'off')}${ic(icon+'-fill','on')}<span>${label}</span></button>`;
   return `<div class="in">${t('home','Home','house')}${t('tx','Activity','list-bullets')}<button class="addbtn" data-act="add" aria-label="Add">${ic('plus')}</button>${t('wealth','Wealth','chart-pie-slice')}${t('you','You','user-circle')}</div>`;
@@ -2735,9 +3000,11 @@ function viewHome4(){
     <div class="h4-total"><div><span class="lab">All accounts</span><div class="h4-amt">${nb(`<span data-cu="${total}" data-cu-from="${u.cuFrom||0}">${money(u.cuFrom!=null&&!p.hide?u.cuFrom:total)}</span>`)}<small>${esc(cur())}</small></div></div>
       <div class="h4-dots" dir="ltr">${accs.map((a,i)=>`<i class="${i===ci?'on':''}"></i>`).join('')}</div></div>
     <div class="w-stack" id="stack4">${stackHTML()}</div>
-    ${orbCardHTML()}
+    ${planOn()?planCard4():orbCardHTML()}
     ${smsCard4()}
+    ${planOn()?'':planCard4()}
     ${comingUp4()}
+    ${adviceCard4()}
     ${allTx().length?catBarsHTML(mk,Mn):welcome4()}
     ${todayHTML()}
     ${mapTeaser4(mk)}
@@ -3048,12 +3315,19 @@ function viewPeople(){
   <button class="fr4-split" data-act="add" data-preset="split">${ic('users-three')}Split a bill</button>
   <button class="fr4-split sec" data-act="add" data-preset="lend">${ic('hand-coins')}Lend or borrow</button>`;
 }
+// a loan's monthly payments: paid, next, still to come
+function loanPlanHTML(x){ const lent=x.kind==='lent', paidN=x.sched.filter(i=>i.paid).length;
+  return `<div class="w-card lp4"><div class="hd"><span>${ic('calendar-check')}<b>${esc(lent?`Pays you ${money(x.amt)} a month`:`You pay ${money(x.amt)} a month`)}</b></span><small>${esc(`${paidN} of ${x.n} paid`)}</small></div>
+    <div class="lp4-bar"><i style="width:${(100*sum(x.sched,i=>i.got)/(x.tx.amount||1)).toFixed(1)}%"></i></div>
+    <div class="lp4-s">${x.sched.map((i,k)=>`<div class="${i.paid?'ok':k===x.k-1?(x.late?'late':'nx'):''}"><span>${shortD(i.date)}</span>${nb(money(i.amt))}<em>${i.paid?ic('check'):k===x.k-1?(x.late?'Overdue':'Next'):''}</em></div>`).join('')}</div>
+    ${x.done?'':`<button class="w-btn sec" data-act="pInst" data-v="${esc(x.tx.id)}">${ic('check')}${esc(lent?`Got payment ${x.k} · ${money(x.next.amt-x.next.got)}`:`Paid payment ${x.k} · ${money(x.next.amt-x.next.got)}`)}</button>`}</div>`; }
 function openPerson(id){
   const p=person(id); if(!p) return; const v=peopleBalances()[id]||0; const list=personTx(id), st=Math.abs(v)<10**-dec(), due=personDue(id);
   fd={kind:'person',id,name:p.name,phone:p.phone||''};
   sheet4(`<div class="fr4-hero"><span class="av" style="background:${avatarColor(id)}">${esc((p.name[0]||'?').toUpperCase())}</span><b>${esc(p.name)}</b>
       <span class="${st?'w-muted':v>0?'w-cyan':'w-mag'}">${st?'All settled':v>0?`${esc(p.name)} owes you`:`You owe ${esc(p.name)}`}</span>${st?'':nb(`<span class="${v>0?'w-cyan':'w-mag'}">${money(Math.abs(v))}</span>`)}
       ${due?`<span class="fr4-due${due.late?' w-mag':''}">${ic(due.late?'warning':'calendar-blank')}${dueText(due)}</span>`:''}</div>
+    ${loanPlans(id).filter(x=>!x.done||x.tx.date>=ymd(addDays(new Date(),-60))).map(loanPlanHTML).join('')}
     <div class="fr4-acts">${v>0?`<button class="w-btn cy" data-act="pRemind">${ic('whatsapp-logo')}Send WhatsApp reminder</button><button class="w-btn sec" data-act="pSettle" data-v="in">Mark as settled</button>`:''}${v<0?`<button class="w-btn" data-act="pSettle" data-v="out">I paid them back</button>`:''}
       <div class="fr4-more"><button class="w-chip" data-act="pLend">${ic('arrow-up-right')}Lend</button><button class="w-chip" data-act="pBorrow">${ic('arrow-down-left')}Borrow</button><button class="w-chip" data-act="pSplit">${ic('users-three')}Split a bill</button></div></div>
     <div class="add4-lab">History</div>${list.length?`<div class="w-group fr4-hist">${list.map(t=>{ const e=personEffect(t,id); return `<button class="row" data-act="edit" data-v="${esc(t.id)}"><span class="nm"><b>${esc(t.type==='debt'?(DEBT_KIND[t.debtKind]||['','Money'])[1].replace(':',''):t.note||t.item||cat(t.catId).name)}</b><small>${shortD(t.date)}${t.split?' · bill '+money(t.amount):''}${t.type==='debt'&&t.note?' · '+esc(t.note):''}</small></span>${nb(`<span class="${e>0?'w-cyan':'w-mag'}">${e>0?'+':'−'}${money(Math.abs(e))}</span>`)}</button>`; }).join('')}</div><p class="hint" style="margin:8px 20px 0">+ means they owe you more, − means less.</p>`:'<p class="hint" style="margin:0 20px">Nothing shared yet.</p>'}
@@ -3147,7 +3421,7 @@ function upcoming4(days){
   const lim=ymd(addDays(new Date(),days)), out=[];
   for(const r of P().recurring) if(r.next&&r.next<=lim) out.push({date:r.next,title:recLabel(r),amt:r.amount,dir:r.type==='income'?'in':r.type==='transfer'?'mv':'out',icon:r.type==='income'?'arrow-down-left':r.type==='transfer'?'arrows-left-right':'repeat',act:'setPanel',v:'recurring'});
   for(const a of P().accounts){ const c=cardStatus(a); if(c&&c.due>0&&c.dueDate<=lim) out.push({date:c.dueDate,title:`Pay ${a.name}`,amt:c.due,dir:'out',icon:'credit-card',late:c.late,act:'accView',v:a.id}); }
-  for(const x of P().people){ const d=personDue(x.id); if(d&&d.date<=lim) out.push({date:d.date,title:d.bal>0?`${x.name} pays you back`:`Pay back ${x.name}`,amt:Math.abs(d.bal),dir:d.bal>0?'in':'out',icon:'hand-coins',late:d.late,act:'person',v:x.id}); }
+  for(const x of P().people){ const d=personDue(x.id); if(d&&d.date<=lim) out.push({date:d.date,title:d.inst?(d.bal>0?`${x.name} pays you · ${d.inst.k} of ${d.inst.n}`:`Pay ${x.name} · ${d.inst.k} of ${d.inst.n}`):d.bal>0?`${x.name} pays you back`:`Pay back ${x.name}`,amt:d.inst?d.inst.amt:Math.abs(d.bal),dir:d.bal>0?'in':'out',icon:'hand-coins',late:d.late,act:'person',v:x.id}); }
   return out.sort((a,b)=>a.date<b.date?-1:1);
 }
 function upRow4(x){ const d=pd(x.date), n=dayDiff(todayStr(),x.date);
@@ -3187,6 +3461,227 @@ function viewMonth4(){
   h+=`<div class="mo4-pdf"><button class="w-btn sec" data-act="export">${ic('file-pdf')}PDF report or CSV</button></div>`;
   return h;
 }
+/* ---------- charts: small SVGs, always drawn left to right ---------- */
+const chartTr=s=>LANG==='ar'?trS(String(s||'')).replace(/\bOMR\b/,'ر.ع'):String(s||''); // charts aren't run through the translator
+const clip=s=>s.length>9?s.slice(0,8)+'…':s;
+const shortNum=v=>{ if(P().hide) return '•'; const a=Math.abs(v); return a>=1000?(v/1000).toFixed(a>=10000?0:1)+'k':a>=100?String(Math.round(v)):a>=10?v.toFixed(0):v.toFixed(1); };
+// bars: [{v, t (a target mark), label, cls}]
+function svgBars(vals,o={}){
+  const W=o.w||320, H=o.h||130, n=vals.length||1, top=o.vals?16:6, bot=o.labels===false?2:18, gap=o.gap!=null?o.gap:Math.max(3,Math.min(10,60/n));
+  const mx=Math.max(1e-9,...vals.map(x=>Math.max(x.v||0,x.t||0,x.g||0))), bw=(W-gap*(n-1))/n, ih=H-top-bot, y=v=>top+ih*(1-Math.max(0,v)/mx);
+  let g=''; vals.forEach((x,i)=>{ const X=i*(bw+gap);
+    if(x.wk) g+=`<rect class="wk" x="${(X-gap/2).toFixed(1)}" y="0" width="${(bw+gap).toFixed(1)}" height="${H-bot+2}" rx="6"/>`;
+    if(x.g>0) g+=`<rect class="g" x="${X.toFixed(1)}" y="${y(x.g).toFixed(1)}" width="${bw.toFixed(1)}" height="${(top+ih-y(x.g)).toFixed(1)}" rx="${Math.min(6,bw/3).toFixed(1)}"/>`;
+    const h=top+ih-y(x.v||0); if(h>0.3) g+=`<rect class="${x.cls||'b'}" x="${X.toFixed(1)}" y="${y(x.v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,h).toFixed(1)}" rx="${Math.min(6,bw/3).toFixed(1)}"/>`;
+    if(x.t>0) g+=`<line class="t" x1="${(X-2).toFixed(1)}" x2="${(X+bw+2).toFixed(1)}" y1="${y(x.t).toFixed(1)}" y2="${y(x.t).toFixed(1)}"/>`;
+    if(o.vals&&(x.v||0)>0) g+=`<text class="v" x="${(X+bw/2).toFixed(1)}" y="${(y(x.v)-4).toFixed(1)}">${shortNum(x.v)}</text>`;
+    if(o.labels!==false) g+=`<text x="${(X+bw/2).toFixed(1)}" y="${H-4}"${x.hl?' class="hl"':''}>${esc(clip(chartTr(x.label)))}</text>`; });
+  return `<svg class="ch4${o.cls?' '+o.cls:''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(o.aria||'Chart')}" data-notr dir="ltr">${g}</svg>`;
+}
+// running totals over a month: the plan, what you spent, and where you're heading
+function svgPace(days,planC,actC,fcC,o={}){
+  const W=320, H=o.h||140, top=10, bot=18, n=days.length, mx=Math.max(1e-9,...planC,...actC,...fcC.filter(v=>v!=null)), ih=H-top-bot;
+  const X=i=>n<2?0:i*W/(n-1), Y=v=>top+ih*(1-v/mx), path=arr=>arr.map((v,i)=>v==null?null:`${X(i).toFixed(1)},${Y(v).toFixed(1)}`).filter(Boolean).join(' ');
+  const ti=actC.length-1; let g='';
+  for(let k=1;k<4;k++) g+=`<line class="grid" x1="0" x2="${W}" y1="${(top+ih*k/4).toFixed(1)}" y2="${(top+ih*k/4).toFixed(1)}"/>`;
+  if(actC.length) g+=`<polygon class="area" points="${X(0).toFixed(1)},${top+ih} ${path(actC)} ${X(ti).toFixed(1)},${top+ih}"/>`;
+  g+=`<polyline class="pl" points="${path(planC)}"/>`;
+  if(fcC.some(v=>v!=null)) g+=`<polyline class="fc" points="${path(fcC)}"/>`;
+  if(actC.length) g+=`<polyline class="ac" points="${path(actC)}"/><circle class="dot" cx="${X(ti).toFixed(1)}" cy="${Y(actC[ti]).toFixed(1)}" r="4"/>`;
+  [0,Math.floor((n-1)/2),n-1].forEach((i,k)=>{ const d=pd(days[i]); g+=`<text x="${X(i).toFixed(1)}" y="${H-4}" text-anchor="${k===0?'start':k===2?'end':'middle'}">${d.getDate()} ${esc(monS(d.getMonth()))}</text>`; });
+  return `<svg class="ch4 pace" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Spending this month against the plan" data-notr dir="ltr">${g}</svg>`;
+}
+const paceLegend=()=>`<div class="ch4-k"><span><i class="ac"></i>Spent</span><span><i class="pl"></i>Plan</span><span><i class="fc"></i>Forecast</span></div>`;
+// a ring split into parts: [{v,color}]
+function svgDonut(parts,center,sub){ const R=52, C=2*Math.PI*R, tot=sum(parts,x=>Math.max(0,x.v))||1; let off=0, g='';
+  for(const x of parts){ const L=Math.max(0,x.v)/tot*C; if(L<=0) continue; g+=`<circle r="${R}" cx="70" cy="70" fill="none" stroke="${x.color}" stroke-width="16" stroke-dasharray="${Math.max(0,L-2).toFixed(2)} ${(C-Math.max(0,L-2)).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)"/>`; off+=L; }
+  return `<svg class="donut4" viewBox="0 0 140 140" role="img" aria-label="Where your salary goes" data-notr dir="ltr"><circle r="${R}" cx="70" cy="70" fill="none" class="trk" stroke-width="16"/>${g}<text x="70" y="68" class="c1">${esc(center)}</text><text x="70" y="86" class="c2">${esc(chartTr(sub))}</text></svg>`; }
+// weekday labels in the week's order
+const wkOrder=()=>{ const s=P().weekStart||0; return [0,1,2,3,4,5,6].map(i=>(i+s)%7); };
+function dowBars(vals,hl,o={}){ return svgBars(wkOrder().map(i=>({v:vals[i],label:dowS(i,LANG==='ar'?1:3),hl:(hl||[]).includes(i),cls:(hl||[]).includes(i)?'b':'m',wk:wkdDays().includes(i)})),{h:o.h||110,vals:true,aria:'Spending by weekday'}); }
+
+/* ---------- My plan ---------- */
+// lines counted once in totals: a category, or an item whose category has no line of its own
+const topLines=()=>plan().lines.filter(l=>!l.item||!plan().lines.some(o=>!o.item&&o.catId===l.catId));
+const perText=l=>l.period==='day'?(l.wkd!=null&&l.wkd!==''&&+l.wkd!==+l.amt?`${money(+l.amt||0)} a day · ${money(+l.wkd||0)} on weekends`:`${money(+l.amt||0)} a day`):l.period==='week'?`${money(+l.amt||0)} a week`:`${money(+l.amt||0)} a month`;
+function aheadText(st){ if(st.over>0) return `<small class="w-mag">${esc(`${money(st.over)} over plan`)}</small>`; if(st.ahead>10**-dec()*5) return `<small class="w-cyan">${esc(`${money(st.ahead)} ahead`)}</small>`; return `<small>${esc('On plan')}</small>`; }
+function planLineRow(l){ const st=lineStatus(l), v=lineVis(l), pct=st.B>0?Math.min(100,st.S/st.B*100):0, exp=st.B>0?Math.min(100,(sum(dayList(st.a,todayStr()),d=>planned(l,d)))/(sum(dayList(st.a,st.b),d=>planned(l,d))||1)*100):0;
+  return `<button class="pl4-l" data-act="pline" data-v="${esc(l.id)}">${tileHTML(v)}<span class="m"><span class="r"><b>${esc(lineName(l))}</b>${nb(`<span class="${st.left<0?'w-mag':''}">${money(st.left)}</span>`)}</span>
+    <span class="r s"><small>${esc(perText(l))}</small><small>${esc(st.leftLabel)}</small></span>
+    <i class="bar"><i style="width:${pct.toFixed(1)}%;background:${st.over>0?'var(--mag)':v.color}"></i><em style="inset-inline-start:${exp.toFixed(1)}%"></em></i>${aheadText(st)}</span></button>`; }
+function fixCardHTML(f){ const l=plan().lines.find(x=>x.id===f.lineId); if(!l) return ''; const st=lineStatus(l), tol=Math.max(10**-dec()*5,st.B*.03), n=dayDiff(f.from,f.to)+1, done=Math.max(0,Math.min(n,dayDiff(f.from,todayStr())+1)), ok=st.ahead>=-tol;
+  return `<div class="w-card pl4-fix"><div class="hd">${ic('target')}<span><b>${esc(f.label||'Getting back on plan')}</b><small>${esc(`${lineName(l)} · ${money(f.amount)} to win back`)}</small></span><button class="w-round sm" data-act="fixCancel" data-v="${esc(f.id)}" aria-label="Cancel this plan">${ic('x')}</button></div>
+    ${f.kind==='cut'||f.kind==='pause'?`<i class="bar"><i style="width:${(done/n*100).toFixed(1)}%"></i></i><div class="ft"><span>${esc(`Day ${done} of ${n} · until ${shortD(f.to)}`)}</span><b class="${ok?'w-cyan':'w-mag'}">${ok?'On track':'Behind'}</b></div>`:`<div class="ft"><span>${esc(f.kind==='savings'?'Covered from savings':f.kind==='raise'?'Covered from unplanned salary':'Covered by other lines')}</span><b class="w-cyan">Done</b></div>`}</div>`; }
+function planIntro4(){ const sug=suggestLines();
+  return `<div class="w-card pl4-intro">${ic('target')}<b>Plan your month</b><p>Add your salary and what you expect to spend — food and coffee a day, fuel a week, rent a month. Weekends can be different. Masroof then shows what’s left each day, moves what you don’t spend to the days ahead, and helps you get back when you go over.</p>
+    ${sug.length?`<div class="add4-lab">From your spending</div><div class="pl4-sug">${sug.slice(0,6).map(l=>`<span>${tileHTML(lineVis(l))}<b>${esc(lineName(l))}</b><small>${esc(perText(l))}</small></span>`).join('')}</div>`:''}
+    <button class="w-btn" data-act="goPlanEdit">${ic('plus')}Set up my plan</button></div>`; }
+function viewPlan4(){
+  const head=`<div class="w-push-h"><button class="w-round" data-act="back" aria-label="Back">${backI()}</button><span class="t">My plan</span>${planOn()?`<button class="w-pill card" data-act="goPlanEdit">${ic('pencil-simple')}Edit</button>`:''}</div>`;
+  if(!planOn()) return head+planIntro4();
+  const T=todayStr(), td=planToday(), wk=isWkd(T), pm=planMonth(), fx=fixes().filter(f=>(f.to||pm.b)>=T&&f.from>=pm.a);
+  let h=head+`<div class="w-card pl4-today"><span class="lab">${wk?'Weekend · you can still spend today':'You can still spend today'}</span>
+    <div class="big">${nb(`<span class="${td.left<0?'w-mag':''}">${money(td.left)}</span>`)}<small>${esc(cur())}</small></div>
+    <span class="sub">${esc(`of ${money(td.allow)} for today, across your daily lines`)}</span>
+    <div class="pl4-chips">${td.lines.filter(s=>s.period==='day').map(s=>`<button data-act="pline" data-v="${esc(s.l.id)}">${tileHTML(lineVis(s.l))}<span><b>${esc(lineName(s.l))}</b>${nb(`<span class="${s.left<0?'w-mag':''}">${money(s.left)}</span>`)}</span></button>`).join('')}</div></div>`;
+  for(const s of td.over) h+=`<div class="w-card pl4-over">${ic('warning')}<span><b>${esc(`${lineName(s.l)} is ${money(s.over)} over plan`)}</b><small>Choose how to get back. Until you do, Masroof spreads it over the days left.</small></span><button class="w-pill" data-act="planFix" data-v="${esc(s.l.id)}">Ways back</button></div>`;
+  h+=fx.map(fixCardHTML).join('');
+  h+=`<div class="w-sec"><h2>Your lines</h2><button class="w-pill card" data-act="goPlanEdit">${ic('plus')}Add</button></div><div class="w-group pl4-ls">${plan().lines.map(planLineRow).join('')}</div>`;
+  // salary split
+  const day=sum(topLines().filter(l=>l.period==='day'),l=>lineMonthEq(l,T)), week=sum(topLines().filter(l=>l.period==='week'),l=>lineMonthEq(l,T)), month=sum(topLines().filter(l=>l.period==='month'),l=>lineMonthEq(l,T));
+  const parts=[{v:month,color:'#3D7DD8',l:'Monthly'},{v:day,color:'#E0782F',l:'Day to day'},{v:week,color:'#8A5CD6',l:'Weekly'},{v:pm.goalsM,color:'#2BA38A',l:'Goals'},{v:pm.loansM,color:'#C2555A',l:'Loan payments'},{v:Math.max(0,pm.unplanned),color:'#EDBB00',l:'Not planned'}];
+  if(pm.salary>0) h+=`<div class="w-sec"><h2>Your salary</h2></div><div class="w-card pl4-sal">${svgDonut(parts,money(pm.salary),cur())}<div class="lg">${parts.filter(x=>x.v>0).map(x=>`<div><i style="background:${x.color}"></i><span>${esc(x.l)}</span>${nb(money(x.v))}</div>`).join('')}</div>
+    <p class="hint">${esc(pm.unplanned>=0?`${money(pm.unplanned)} a month isn’t planned for anything — that’s what you can save.`:`Your plan is ${money(-pm.unplanned)} more than your salary.`)}</p></div>`;
+  // the month: running totals and where it ends
+  const days=dayList(pm.a,pm.b), tl=topLines(), ti=days.indexOf(T); let pc=0, ac=0; const planC=[], actC=[], fcC=[];
+  const spMaps=tl.map(l=>lineSpend(l,pm.a,pm.b)), habs=tl.map(l=>dowHabit(l,T));
+  days.forEach((d,i)=>{ pc+=sum(tl,l=>planned(l,d)); planC.push(pc); if(i<=ti){ ac+=sum(spMaps,m=>m[d]||0); actC.push(ac); fcC.push(i===ti?ac:null); } else { const last=fcC[i-1]!=null?fcC[i-1]:ac; fcC.push(last+sum(habs,hb=>hb[pd(d).getDay()])); } });
+  const fcEnd=fcC[fcC.length-1]!=null?fcC[fcC.length-1]:ac, pEnd=pc;
+  h+=`<div class="w-sec"><h2>${esc(`By ${shortD(pm.b)}`)}</h2></div><div class="w-card pl4-fc">${svgPace(days,planC,actC,fcC)}${paceLegend()}
+    <div class="pl4-two"><div><span>Keep to the plan</span>${nb(money(pEnd))}<small>${esc('spent on your lines')}</small></div><div><span>At your current pace</span>${nb(`<span class="${fcEnd>pEnd?'w-mag':'w-cyan'}">${money(fcEnd)}</span>`)}<small>${esc(fcEnd>pEnd?`${money(fcEnd-pEnd)} over the plan`:`${money(pEnd-fcEnd)} left over`)}</small></div></div>
+    ${pm.salary>0?`<p class="hint">${esc(`From your salary: about ${money(pm.salary-Math.max(pEnd,fcEnd)-pm.goalsM-pm.loansM)} left after your lines, goals and loan payments.`)}</p>`:''}</div>`;
+  const ins=insights().slice(0,2);
+  h+=`<div class="w-sec"><h2>Advisor</h2><button class="linkish w-cyan" data-act="tab" data-v="advisor">See all</button></div>${ins.length?ins.map(insightHTML).join(''):`<div class="w-card wl4-empty">${ic('sparkle')}<span>Masroof needs a few weeks of spending to give advice.</span></div>`}`;
+  return h;
+}
+// one line: where it stands, how the month is going, your usual week and your months
+function viewPline4(){
+  const u=state.ui, l=planOn()&&plan().lines.find(x=>x.id===u.plId); if(!l) return viewPlan4();
+  const T=todayStr(), st=lineStatus(l), v=lineVis(l), days=dayList(st.a,st.b), sp=lineSpend(l,st.a,st.b), hab=dowHabit(l,T), ti=days.indexOf(T);
+  let pc=0,ac=0; const planC=[],actC=[],fcC=[]; const B0=sum(days,d=>planned(l,d)), k=B0>0?st.B/B0:1;
+  days.forEach((d,i)=>{ pc+=planned(l,d)*k; planC.push(pc); if(i<=ti){ ac+=sp[d]||0; actC.push(ac); fcC.push(i===ti?ac:null); } else { const last=fcC[i-1]!=null?fcC[i-1]:ac; fcC.push(last+(l.period==='month'?0:hab[pd(d).getDay()])); } });
+  let h=`<div class="w-push-h"><button class="w-round" data-act="back" aria-label="Back">${backI()}</button><span class="t">${esc(lineName(l))}</span><button class="w-pill card" data-act="goPlanEdit">${ic('pencil-simple')}Edit</button></div>
+  <div class="w-card pl4-hero">${tileHTML(v,'lg')}<div><span class="lab">${esc(st.leftLabel)}</span><div class="big">${nb(`<span class="${st.left<0?'w-mag':''}">${money(st.left)}</span>`)}<small>${esc(cur())}</small></div>${aheadText(st)}<small>${esc(perText(l))}</small></div></div>`;
+  if(st.over>0&&!st.fix) h+=`<div class="w-card pl4-over">${ic('warning')}<span><b>${esc(`${money(st.over)} over plan`)}</b><small>Pick how to get back on track.</small></span><button class="w-pill" data-act="planFix" data-v="${esc(l.id)}">Ways back</button></div>`;
+  h+=fixes().filter(f=>f.lineId===l.id&&f.from>=st.a&&(f.to||st.b)>=T).map(fixCardHTML).join('');
+  h+=`<div class="w-sec"><h2>${esc(st.a===periodRange('week',T)[0]?'This week':'This month')}</h2></div><div class="w-card pl4-fc">${svgPace(days,planC,actC,fcC)}${paceLegend()}
+    <div class="pl4-two"><div><span>Spent so far</span>${nb(money(st.S))}<small>${esc(`of ${money(st.B)}`)}</small></div><div><span>At your pace</span>${nb(`<span class="${st.fcLeft<0?'w-mag':'w-cyan'}">${money(Math.abs(st.fcLeft))}</span>`)}<small>${esc(st.fcLeft<0?'over by the end':'left at the end')}</small></div></div></div>`;
+  if(l.period==='day'){ const [wa,wb]=periodRange('week',T), wd=dayList(wa,wb), wsp=lineSpend(l,wa,wb);
+    h+=`<div class="w-sec"><h2>Day by day</h2></div><div class="w-card pl4-ch">${svgBars(wd.map(d=>({v:wsp[d]||0,g:wOn(l,d),label:dowS(pd(d).getDay(),LANG==='ar'?1:3),hl:d===T,cls:(wsp[d]||0)>wOn(l,d)+1e-9?'o':'b',wk:isWkd(d)})),{vals:true,aria:'This week'})}
+      <div class="ch4-k"><span><i class="b"></i>Spent</span><span><i class="g"></i>Plan for the day</span><span><i class="o"></i>Over</span></div></div>`; }
+  if(l.period==='week'){ const wks=[]; for(let d=st.a;d<=st.b;){ const [wa,wb]=periodRange('week',d); wks.push([wa<st.a?st.a:wa,wb>st.b?st.b:wb]); d=ymd(addDays(pd(wb),1)); }
+    h+=`<div class="w-sec"><h2>Week by week</h2></div><div class="w-card pl4-ch">${svgBars(wks.map(([a,b])=>{ const s=spentIn(sp,a,b), p=sum(dayList(a,b),d=>wOn(l,d)); return {v:s,g:p,label:shortD(a),hl:a<=T&&T<=b,cls:s>p+1e-9?'o':'b'}; }),{vals:true,aria:'Week by week'})}</div>`; }
+  { const p=[0,0,0,0,0,0,0], m=lineSpend(l,ymd(addDays(pd(T),-84)),ymd(addDays(pd(T),-1))); for(const d in m) p[pd(d).getDay()]+=m[d]/12;
+    const we=wkdDays(), W=sum(we.map(i=>p[i]))/(we.length||1), D=sum([0,1,2,3,4,5,6].filter(i=>!we.includes(i)).map(i=>p[i]))/((7-we.length)||1);
+    if(sum(p)>0) h+=`<div class="w-sec"><h2>Your usual week</h2></div><div class="w-card pl4-ch">${dowBars(p,we)}<p class="hint">${esc(W>D*1.2?`Weekend days run about ${money(W)}, workdays ${money(D)}.`:`About ${money(D)} on a workday and ${money(W)} on a weekend day.`)}</p></div>`; }
+  { const ms=[]; for(let i=5;i>=0;i--){ const an=shiftAnchor('month',T,-i), [a,b]=periodRange('month',an); ms.push({label:monS(pd(a).getMonth()),v:spentIn(lineSpend(l,a,b),a,b),t:lineMonthEq(l,an),hl:i===0}); }
+    const nx=lineAvgMonths(l,3); ms.push({label:monS(pd(shiftAnchor('month',T,1)).getMonth()),v:nx,cls:'p',t:lineMonthEq(l,shiftAnchor('month',T,1))});
+    if(ms.some(x=>x.v>0)) h+=`<div class="w-sec"><h2>Month by month</h2></div><div class="w-card pl4-ch">${svgBars(ms,{vals:true,aria:'Month by month'})}<div class="ch4-k"><span><i class="b"></i>Spent</span><span><i class="t"></i>Plan</span><span><i class="p"></i>Next month, likely</span></div></div>`; }
+  const recent=txBetween(ymd(addDays(pd(T),-60)),T).filter(t=>t.type==='expense'&&allocs(t).some(x=>x.catId===l.catId&&(!l.item||x.item===l.item))).sort((a,b)=>a.date===b.date?(b.ts||0)-(a.ts||0):a.date<b.date?1:-1).slice(0,8);
+  if(recent.length) h+=`<div class="w-sec"><h2>Latest</h2></div><div class="w-group a4-g">${recent.map(t=>{ const r=row4(t); return `<button class="tx r4" data-act="view" data-v="${esc(t.id)}">${tileHTML(txVis(t))}<span class="r4m"><b>${esc(r.title)}</b><small>${esc(shortD(t.date))}</small></span>${nb(`<span class="${r.cls}">${r.amt}</span>`)}</button>`; }).join('')}</div>`;
+  return h;
+}
+// ways back, as cards to choose from
+function openRecover(id){
+  const l=plan().lines.find(x=>x.id===id); if(!l) return; const st=lineStatus(l), opts=recoverOptions(l); state.ui.rcOpts=opts; state.ui.rcLine=id;
+  if(!(st.over>0)) return sheet4(`<div class="rc4-h">${tileHTML(lineVis(l),'lg')}<b>${esc(`${lineName(l)} is on plan`)}</b><p>Nothing to win back. If it goes over, the ways back show up here.</p></div>`,`<button class="w-btn" data-act="close">OK</button>`,'rc4');
+  sheet4(`<div class="rc4-h">${tileHTML(lineVis(l),'lg')}<b>${esc(`${lineName(l)} is ${money(st.over)} over plan`)}</b><p>Choose how to get back. Masroof changes what’s left each day to match, and you can cancel any time.</p></div>
+    <div class="rc4-list">${opts.map((o,i)=>{ let ch=''; const lineOf=o.fix.pause?plan().lines.find(x=>x.id===o.fix.pause.lineId):l;
+      if((o.fix.kind==='cut'||o.fix.kind==='pause'||o.fix.pause)&&lineOf&&lineOf.period==='day'){ const pv=fixPreview(l,o.fix); ch=svgBars(pv.ds.map((d,j)=>({v:pv.after[j],g:pv.before[j],label:j%2?'':String(pd(d).getDate()),cls:'c',wk:isWkd(d)})),{h:70,gap:3,aria:'Each day before and after'}); }
+      return `<button class="rc4-o" data-act="fixPick" data-v="${i}"><span class="t"><b>${esc(o.title)}</b>${ic('caret-right')}</span><small>${esc(o.text)}</small>${ch}</button>`; }).join('')}</div>
+    <p class="hint rc4-note">If you don’t pick one, the overspend comes off the days left in the ${l.period==='day'&&plan().pool==='week'?'week':'month'}.</p>`,'','rc4');
+}
+
+/* ---------- setting up the plan ---------- */
+// what you usually spend on a category or item: a workday, a weekend day, a week, a month (last 8 weeks)
+function usualFor(catId,item){ const T=todayStr(), a=ymd(addDays(pd(T),-56)), b=ymd(addDays(pd(T),-1)), m=lineSpend({catId,item},a,b); let wd=0,we=0,nwd=0,nwe=0;
+  for(const d of dayList(a,b)){ if(isWkd(d)){ we+=m[d]||0; nwe++; } else { wd+=m[d]||0; nwd++; } }
+  const tot=wd+we; return {wd:nwd?wd/nwd:0,we:nwe?we/nwe:0,week:tot/8,month:tot/56*30.4,any:tot>0}; }
+const nice=v=>{ const a=Math.abs(v), st=a<2?.1:a<20?.5:a<100?1:5; return round(Math.ceil(v/st-1e-9)*st,dec()); };
+function usualLine(l){ const u=usualFor(l.catId,l.item); if(l.period==='day') return {amt:nice(u.wd),wkd:nice(u.we)}; return {amt:nice(l.period==='week'?u.week:u.month)}; }
+function suggestLines(){
+  const out=[], add=(catId,item,period)=>{ if(!findCat(catId)||out.some(x=>x.catId===catId&&x.item===item)) return; const l={id:newId(),catId,item,period}; Object.assign(l,usualLine(l)); if(l.amt>0||l.wkd>0) out.push(l); };
+  add('bills','Rent','month'); add('food','','day'); add('food','Coffee','day'); add('fun','','day'); add('transport','Fuel','week'); add('groceries','','week'); add('shopping','','month');
+  const ms=monthsBack(3).filter(m=>m.n>0); if(ms.length) P().categories.expense.map(c=>({c,v:sum(ms,m=>(m.s.byCat[c.id]||{}).total||0)/ms.length})).filter(x=>x.v>=20).sort((x,y)=>y.v-x.v).forEach(x=>add(x.c.id,'',x.c.id==='bills'?'month':'month'));
+  return out;
+}
+function planDraft(){ const pl=plan(), sal=(()=>{ const s=txBetween(ymd(addDays(new Date(),-62)),todayStr()).filter(t=>t.type==='income'&&t.catId==='salary').sort((a,b)=>a.date<b.date?1:-1)[0]; return s?s.amount:''; })();
+  return pl?{salary:pl.salary!=null?String(pl.salary):'',weekend:(pl.weekend||WEEKEND_DEF).slice(),pool:pl.pool||'month',payday:mStart(),lines:clone(pl.lines||[]).map(l=>({...l,amt:l.amt!=null?String(l.amt):'',wkd:l.wkd!=null?String(l.wkd):''})),isNew:false}
+    :{salary:sal?String(sal):'',weekend:WEEKEND_DEF.slice(),pool:'month',payday:mStart(),lines:suggestLines().map(l=>({...l,amt:String(l.amt),wkd:l.wkd!=null?String(l.wkd):''})),isNew:true}; }
+const whatOptions=sel=>P().categories.expense.map(c=>`<optgroup label="${esc(c.name)}"><option value="${esc(c.id)}|"${sel===c.id+'|'?' selected':''}>${esc(`All of ${c.name}`)}</option>${c.items.map(it=>`<option value="${esc(c.id+'|'+it)}"${sel===c.id+'|'+it?' selected':''}>${esc(it)}</option>`).join('')}</optgroup>`).join('');
+function peSumHTML(){ const e=state.ui.pe; if(!e) return ''; const T=todayStr(), sal=num(e.salary);
+  const ls=e.lines.map(l=>({...l,amt:num(l.amt),wkd:l.wkd===''?null:num(l.wkd)})), top=ls.filter(l=>!l.item||!ls.some(o=>!o.item&&o.catId===l.catId));
+  const n=cycleDays(T); let tot=0; for(const l of top){ if(l.period==='month') tot+=l.amt; else if(l.period==='week') tot+=l.amt*n/7; else { const ds=dayList(...periodRange('month',T)); tot+=sum(ds,d=>e.weekend.includes(pd(d).getDay())&&l.wkd!=null?l.wkd:l.amt); } }
+  const left=sal-tot, w=sal>0?Math.min(100,tot/sal*100):100;
+  return `<div class="pe4-bar"><i style="width:${w.toFixed(1)}%;background:${left<0?'var(--mag)':'var(--yel)'}"></i></div><div class="pe4-st"><span>${esc(`Planned ${money(tot)} a month`)}</span><b class="${left<0?'w-mag':'w-cyan'}">${esc(sal>0?(left>=0?`${money(left)} left to save`:`${money(-left)} more than your salary`):'Add your salary')}</b></div>`; }
+function viewPlanEdit4(){
+  const u=state.ui; if(!u.pe) u.pe=planDraft(); const e=u.pe, T=todayStr();
+  const sugg=suggestLines().filter(s=>!e.lines.some(l=>l.catId===s.catId&&(l.item||'')===(s.item||''))).slice(0,6);
+  return `<div class="w-push-h"><button class="w-round" data-act="back" aria-label="Back">${backI()}</button><span class="t">${e.isNew?'Set up my plan':'Edit my plan'}</span></div>
+  <div class="w-card pe4-c"><div class="add4-lab">Salary</div><div class="pe4-two"><label class="pe4-f"><span>Each month (${esc(cur())})</span><input class="inp" inputmode="decimal" dir="ltr" data-pe="salary" value="${esc(e.salary)}" placeholder="e.g. 1200"></label>
+    <label class="pe4-f"><span>Paid on</span><select class="sel" data-pe="payday">${Array.from({length:28},(_,i)=>`<option value="${i+1}"${+e.payday===i+1?' selected':''}>${esc(i===0?'The 1st':`Day ${i+1}`)}</option>`).join('')}</select></label></div>
+    <p class="hint">Your month runs from payday to payday.</p>
+    <div class="add4-lab">Weekend days</div><div class="w-chips pe4-wk">${[0,1,2,3,4,5,6].map(i=>`<button class="w-chip" data-act="peWkd" data-v="${i}" aria-pressed="${e.weekend.includes(i)}" aria-label="${esc(DOW[i])}">${esc(dowS(i,3))}</button>`).join('')}</div>
+    <div class="add4-lab">What you don’t spend, or overspend, evens out over</div><div class="w-seg" role="group">${[['week','The week'],['month','The month']].map(([k,lb])=>`<button data-act="pePool" data-v="${k}" aria-pressed="${e.pool===k}">${lb}</button>`).join('')}</div></div>
+  <div class="w-sec"><h2>Lines</h2></div>
+  ${e.lines.map((l,i)=>{ const us=usualFor(l.catId,l.item), v=catVis(l.catId,l.item);
+    const uText=!us.any?'No spending on this in the last 8 weeks.':l.period==='day'?`Usually ${money(us.wd)} a workday, ${money(us.we)} a weekend day.`:l.period==='week'?`Usually ${money(us.week)} a week.`:`Usually ${money(us.month)} a month.`;
+    return `<div class="w-card pe4-l"><div class="hd">${tileHTML(v)}<select class="sel" data-pe="lines.${i}.what" aria-label="What">${whatOptions(l.catId+'|'+(l.item||''))}</select><button class="w-round sm" data-act="peDel" data-v="${i}" aria-label="Remove">${ic('trash')}</button></div>
+      <div class="w-seg" role="group">${[['day','A day'],['week','A week'],['month','A month']].map(([k,lb])=>`<button data-act="pePer" data-v="${i}:${k}" aria-pressed="${l.period===k}">${lb}</button>`).join('')}</div>
+      <div class="pe4-two">${l.period==='day'?`<label class="pe4-f"><span>Workdays</span><input class="inp" inputmode="decimal" dir="ltr" data-pe="lines.${i}.amt" value="${esc(l.amt)}" placeholder="0"></label><label class="pe4-f"><span>Weekends</span><input class="inp" inputmode="decimal" dir="ltr" data-pe="lines.${i}.wkd" value="${esc(l.wkd)}" placeholder="${esc(l.amt||'0')}"></label>`
+        :`<label class="pe4-f"><span>${l.period==='week'?'Each week':'Each month'}</span><input class="inp" inputmode="decimal" dir="ltr" data-pe="lines.${i}.amt" value="${esc(l.amt)}" placeholder="0"></label>`}</div>
+      <div class="pe4-u"><small>${esc(uText)}</small>${us.any?`<button class="linkish w-cyan" data-act="peUsual" data-v="${i}">Use my usual</button>`:''}</div></div>`; }).join('')}
+  <div class="w-card pe4-add"><div class="add4-lab">Add a line</div><div class="w-chips">${sugg.map(s=>`<button class="w-chip" data-act="peAdd" data-v="${esc(s.catId+'|'+(s.item||'')+'|'+s.period)}">${ic('plus')}${esc(lineName(s))}</button>`).join('')}<button class="w-chip" data-act="peAdd" data-v="">${ic('plus')}Something else</button></div></div>
+  <div class="pe4-foot"><div id="peSum">${peSumHTML()}</div><button class="w-btn" data-act="peSave">${ic('check')}${e.isNew?'Start my plan':'Save plan'}</button>${e.isNew?'':`<button class="linkish w-mag pe4-del" data-act="peRemove">Delete my plan</button>`}</div>`;
+}
+function savePlanDraft(){
+  const e=state.ui.pe, p=P(); if(!e) return;
+  const lines=e.lines.map(l=>({id:l.id||newId(),catId:l.catId,item:l.item||'',period:l.period,amt:round(num(l.amt),dec()),wkd:l.period==='day'&&String(l.wkd).trim()!==''?round(num(l.wkd),dec()):null})).filter(l=>l.amt>0||(l.wkd||0)>0);
+  if(!lines.length) return toast('Add at least one line with an amount',{bad:true});
+  const seen=new Set(); for(const l of lines){ const k=l.catId+'|'+l.item; if(seen.has(k)) return toast(`${lineName(l)} is in the plan twice`,{bad:true}); seen.add(k); }
+  const old=p.plan; p.plan={salary:round(num(e.salary),dec())||0,weekend:e.weekend.slice().sort(),pool:e.pool,start:old&&old.start?old.start:todayStr(),lines,fixes:((old&&old.fixes)||[]).filter(f=>lines.some(l=>l.id===f.lineId))};
+  if(+e.payday!==mStart()) p.monthStart=+e.payday;
+  delete p.demoPlan; state.ui.pe=null; persist('profile'); toast(e.isNew?'Your plan is on':'Plan saved'); go4('plan');
+}
+function insightHTML(x){ const ch=x.chart&&x.chart.kind==='dow'?dowBars(x.chart.vals,x.chart.hl,{h:90}):'';
+  return `<div class="w-card ad4-i ${x.tone}"><div class="hd">${ic(x.icon)}<b>${esc(x.title)}</b></div><p>${esc(x.text)}</p>${ch}${x.act?`<button class="linkish w-cyan" data-act="${x.act.act}"${x.act.v?` data-v="${esc(x.act.v)}"`:''}>${esc(x.act.label)}</button>`:''}</div>`; }
+
+/* ---------- the advisor ---------- */
+function viewAdvisor4(){
+  const T=todayStr(), [a,b]=periodRange('month',T), fc=spendForecast(a,b,T), ms=monthsBack(6).filter(m=>m.n>0), pr=predictNext(), acc=predictAccuracy();
+  let h=`<div class="w-push-h"><button class="w-round" data-act="back" aria-label="Back">${backI()}</button><span class="t">Advisor</span></div>
+  <p class="hint ad4-intro">Masroof learns from your months — what you spend, on which days, and how it changes — to predict what’s coming and where you can do better. It all stays on this iPhone.</p>`;
+  if(allTx().filter(t=>t.type==='expense').length<15) return h+`<div class="w-card wl4-empty">${ic('sparkle')}<span>Add a few weeks of spending (or bring in your bank messages) and the advice starts here.</span></div>`;
+  const usual=ms.length?sum(ms.slice(0,3),m=>m.s.spent)/Math.min(3,ms.length):0, planM=planOn()?sum(topLines(),l=>lineMonthEq(l,T)):0;
+  // this month so far, and where it's heading
+  const days=dayList(a,b), ti=days.indexOf(T), sp={}; for(const t of txBetween(a,T)) if(t.type==='expense') sp[t.date]=(sp[t.date]||0)+myShare(t);
+  let ac=0; const actC=[], fcC=[], usC=[]; let uc=0; days.forEach((d,i)=>{ uc+=usual/days.length; usC.push(uc); if(i<=ti){ ac+=sp[d]||0; actC.push(ac); fcC.push(i===ti?ac:null); } else { const last=fcC[i-1]!=null?fcC[i-1]:ac; fcC.push(last+fc.byDay[pd(d).getDay()]*fc.ratio); } });
+  h+=`<div class="w-card ad4-now"><span class="lab">${esc(`Likely to spend by ${shortD(b)}`)}</span><div class="big">${nb(money(fc.total))}<small>${esc(cur())}</small></div>
+    <span class="sub ${usual&&fc.total>usual*1.05?'w-mag':usual&&fc.total<usual*.95?'w-cyan':''}">${esc(usual?(fc.total>usual*1.05?`${money(fc.total-usual)} more than a usual month`:fc.total<usual*.95?`${money(usual-fc.total)} less than a usual month`:'About the same as a usual month'):'')}</span>
+    ${svgPace(days,usC,actC,fcC)}<div class="ch4-k"><span><i class="ac"></i>This month</span><span><i class="pl"></i>A usual month</span><span><i class="fc"></i>Forecast</span></div>
+    ${fc.bills>0?`<p class="hint">${esc(`Includes ${money(fc.bills)} of repeating payments still to come.`)}</p>`:''}</div>`;
+  // next month
+  if(pr.months>=1){ const top=Object.entries(pr.by).sort((x,y)=>y[1]-x[1]).slice(0,6), nA=shiftAnchor('month',T,1);
+    h+=`<div class="w-sec"><h2>Next month</h2></div><div class="w-card ad4-next"><span class="lab">${esc(`${periodLabel('month',nA)}, likely`)}</span><div class="big">${nb(money(pr.total))}<small>${esc(cur())}</small></div>
+      ${svgBars(top.map(([c,v])=>({v,t:planOn()?planMonthly(c,nA)||0:budgetFor(c,nA),label:shortCat(cat(c)),cls:'p'})),{vals:true,h:130,aria:'Next month by category'})}
+      <div class="ch4-k"><span><i class="p"></i>Likely</span><span><i class="t"></i>Your plan</span></div>
+      ${acc?`<p class="hint">${esc(`For ${ms[0].label} Masroof expected ${money(acc.guess)}; you spent ${money(acc.actual)} — ${acc.pct}% right. The more months you record, the closer it gets.`)}</p>`:''}
+      ${planOn()&&planM>0?`<p class="hint">${esc(pr.total>planM*1.05?`That’s ${money(pr.total-planM)} more than your plan. The insights below show where to cut.`:`That fits inside your plan of ${money(planM)}.`)}</p>`:''}</div>`; }
+  // insights
+  const ins=insights(); h+=`<div class="w-sec"><h2>What Masroof noticed</h2></div>${ins.length?ins.map(insightHTML).join(''):`<div class="w-card wl4-empty">${ic('check-circle')}<span>Nothing stands out — your spending is steady.</span></div>`}`;
+  // your week
+  const p=weekdayPattern(null); if(sum(p)>0) h+=`<div class="w-sec"><h2>Your week</h2></div><div class="w-card pl4-ch">${dowBars(p,wkdDays())}<p class="hint">Average spent on each day over the last 12 weeks. Weekend days are shaded.</p></div>`;
+  // six months
+  if(ms.length>=2){ const rev=ms.slice().reverse();
+    h+=`<div class="w-sec"><h2>Your months</h2></div><div class="w-card pl4-ch">${svgBars(rev.map(m=>({v:m.s.spent,g:m.s.income,label:monS(pd(m.a).getMonth()),cls:m.s.spent>m.s.income&&m.s.income>0?'o':'b'})),{vals:true,aria:'Spending and income by month'})}
+      <div class="ch4-k"><span><i class="b"></i>Spent</span><span><i class="g"></i>Income</span></div>
+      <div class="ad4-tbl">${rev.slice(-3).reverse().map(m=>`<div><span>${esc(m.label)}</span>${nb(money(m.s.spent))}<small class="${m.s.income-m.s.spent>=0?'w-cyan':'w-mag'}">${esc(m.s.income>0?`kept ${Math.round((m.s.income-m.s.spent)/m.s.income*100)}%`:'')}</small></div>`).join('')}</div></div>`; }
+  return h;
+}
+
+/* ---------- Home: today's plan, or an invitation to make one; and one thing Masroof noticed ---------- */
+function planCard4(){
+  if(!planOn()){ if(allTx().filter(t=>t.type==='expense').length<15||P().planHint===false) return '';
+    return `<button class="w-card h4-plan intro" data-act="tab" data-v="plan">${ic('target')}<span><b>Make a spending plan</b><small>Your salary, food and coffee a day, fuel a week — Masroof keeps you on track and helps when you go over.</small></span>${chevI()}</button>`; }
+  const td=planToday(), ov=td.over[0], ls=td.lines.filter(s=>s.period==='day').slice(0,3);
+  return `<div class="w-card h4-plan"><div class="ch"><span>${isWkd(todayStr())?'Today’s plan · weekend':'Today’s plan'}</span><button class="linkish w-cyan" data-act="tab" data-v="plan">My plan</button></div>
+    <div class="big">${nb(`<span class="${td.left<0?'w-mag':''}">${money(td.left)}</span>`)}<small>${esc(`left of ${money(td.allow)}`)}</small></div>
+    ${ls.map(s=>{ const pct=s.allow>0?Math.min(100,s.today/s.allow*100):s.today>0?100:0; return `<button class="pl4-mini" data-act="pline" data-v="${esc(s.l.id)}"><span>${esc(lineName(s.l))}</span><i class="bar"><i style="width:${pct.toFixed(1)}%;background:${s.left<0?'var(--mag)':lineVis(s.l).color}"></i></i>${nb(`<span class="${s.left<0?'w-mag':''}">${money(s.left)}</span>`)}</button>`; }).join('')}
+    ${ov?`<button class="pl4-warn" data-act="planFix" data-v="${esc(ov.l.id)}">${ic('warning')}<span>${esc(`${lineName(ov.l)} is ${money(ov.over)} over plan`)}</span><b>Ways back</b></button>`:''}</div>`;
+}
+function adviceCard4(){ if(allTx().filter(t=>t.type==='expense').length<15) return ''; const ins=insights(); if(!ins.length) return ''; const x=ins[new Date().getDate()%Math.min(3,ins.length)];
+  return `<button class="w-card h4-adv ${x.tone}" data-act="tab" data-v="advisor">${ic(x.icon)}<span><small>Masroof noticed</small><b>${esc(x.title)}</b></span>${chevI()}</button>`; }
+
 /* ---------- You ---------- */
 function viewYou4(){
   const p=P(), pb=peopleBalances(), owed=sum(Object.values(pb).filter(v=>v>0)), Q=(p.smsQueue||[]).length, S=p.sms||{};
@@ -3200,6 +3695,8 @@ function viewYou4(){
       ${tile('globe-hemisphere-east','Spending map',`${mapPlaces('all').length} places`,'openMap')}
       ${tile('bell-ringing','Reminders',dueWk?`${dueWk} due this week`:'Add to Calendar','reminders')}
       ${tile('chart-bar','This month',`${MONTHS[new Date().getMonth()]} at a glance`,'goMonth')}
+      ${tile('target','My plan',planOn()?(planToday().over.length?`${planToday().over.length} over plan`:'On track'):'Salary & daily amounts','tab','plan')}
+      ${tile('sparkle','Advisor','Patterns & predictions','tab','advisor')}
     </div>
     <div class="w-group" style="margin-top:10px"><button class="y4-row" data-act="tab" data-v="settings">${ic('gear-six')}<span>Settings</span>${chevI()}</button><button class="y4-row" data-act="lockNow">${ic('lock-key')}<span>Lock now</span>${chevI()}</button></div>`;
 }
@@ -3218,7 +3715,7 @@ function viewSettings(){
       row('Auto-lock',val(al),'setPanel','security'), row('Change passcode',val(''),'changePass') ])
   +grp('Automatic',[ row('Bank SMS setup',val(S.setup?'Connected':'Set up'),'smsGuide'), row('Add sure bank messages by itself',tog(S.auto),'smsAuto'),
       row('Keep balances matching the bank',tog(S.syncBal!==false),'smsSyncBal'), row('Repeating payments',val(String(p.recurring.length)),'setPanel','recurring'), row('Reminders in Calendar',val(''),'reminders') ])
-  +grp('Money',[ row('Daily spending limit',val(L.mode==='off'?'Off':L.mode==='smart'?'Smart':money(L.daily||0)),'setPanel','limits'),
+  +grp('Money',[ row('My plan',val(planOn()?`${plan().lines.length} lines`:'Not set'),'tab','plan'), row('Daily spending limit',val(L.mode==='off'?'Off':L.mode==='smart'?'Smart':money(L.daily||0)),'setPanel','limits'),
       row('Monthly budgets',val(Object.keys(p.budgets).length?`${Object.keys(p.budgets).length} set`:'None'),'setPanel','budgets'),
       row('Categories',val(String(p.categories.expense.length+p.categories.income.length)),'setPanel','cats'), row('Quick-add buttons',val(String(p.quick.length)),'setPanel','quick'),
       row('Currencies & rates',val(`<span data-notr>${esc(p.currency)}</span> · ${p.fxAuto?'live':p.fxLive?'updated':'built-in'}`),'setPanel','money') ])
@@ -3248,7 +3745,8 @@ function setPanelHTML(k){
       ${L.mode!=='off'?`<div class="rows"><div class="rw"><span>What counts</span><select class="sel" data-lim="scope"><option value="daily"${L.scope==='daily'?' selected':''}>Day-to-day only</option><option value="all"${L.scope==='all'?' selected':''}>All spending</option></select></div>
         <div class="rw"><span>Warn me at</span><select class="sel" data-lim="warnAt">${[50,70,80,90].map(v=>`<option value="${v}"${L.warnAt===v?' selected':''}>${v}% of the limit</option>`).join('')}</select></div></div>`:''}`;
     case 'budgets': return `<label class="toggle-row" style="border-top:0;padding-top:0"><span>Carry over to next month<br><span class="muted" style="font-size:13px">Money you don’t spend is added to next month’s budget; overspending is taken off.</span></span><input type="checkbox" class="tick" data-act="rollover"${p.rollover?' checked':''}></label>
-      <div class="rows">${p.categories.expense.map(c=>`<div class="rw"><span><span class="dot" style="background:${catVis(c.id).color}"></span> ${esc(c.name)}</span><input class="inp" style="width:110px;text-align:right" inputmode="decimal" placeholder="No limit" value="${p.budgets[c.id]||''}" data-budget="${esc(c.id)}" aria-label="Budget for ${esc(c.name)}"></div>`).join('')}</div>`;
+      ${planOn()?`<p class="hint">Categories in your plan take their budget from it. <button class="linkish w-cyan" data-act="tab" data-v="plan">Open my plan</button></p>`:''}
+      <div class="rows">${p.categories.expense.map(c=>{ const pm=planMonthly(c.id); return `<div class="rw"><span><span class="dot" style="background:${catVis(c.id).color}"></span> ${esc(c.name)}</span>${pm!=null?`<span class="muted">${esc(`${money(pm)} · in your plan`)}</span>`:`<input class="inp" style="width:110px;text-align:right" inputmode="decimal" placeholder="No limit" value="${p.budgets[c.id]||''}" data-budget="${esc(c.id)}" aria-label="Budget for ${esc(c.name)}">`}</div>`; }).join('')}</div>`;
     case 'quick': return `<p class="hint">Pinned buttons show first in the Add sheet. Frequent purchases are added next to them.</p>
       ${p.quick.length?`<div class="chips">${p.quick.map((q,i)=>`<span class="chip">${esc(q.label)} · ${money(q.amount)}<button class="x" data-act="unpin" data-i="${i}" aria-label="Remove">×</button></span>`).join('')}</div>`:''}
       <div class="two"><input class="inp" id="qpLabel" placeholder="Label, e.g. Karak"><input class="inp" id="qpAmt" inputmode="decimal" placeholder="Amount"></div>
