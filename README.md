@@ -7,6 +7,8 @@ A private, encrypted money manager for iPhone. It installs on your Home Screen a
 
 ## What it does
 
+Version 4.2 adds **My plan** and the **Advisor**: your salary, what you expect to spend each day, week or month, what's left today, ways back when you go over, predictions and advice from your own spending, with charts. See [My plan and the Advisor](#my-plan-and-the-advisor) below.
+
 Version 4.1 knows which account each entry belongs to and what it counts as: spending, income, money moved between your own accounts, money between you and a friend, or an investment. See [Several accounts](#several-accounts-which-one-and-what-it-counts-as) below.
 
 Version 4.0 ("Wallet") is a new design: a near-black night edition (the default) and a warm day edition, a gold coin colour for actions, rounded system fonts, Phosphor icons and a coin-fort logo. Every screen works in English and Arabic (right to left), in both editions.
@@ -27,7 +29,7 @@ Version 4.0 ("Wallet") is a new design: a near-black night edition (the default)
 - **Friends** (from You): owed to you and you owe, each friend with their balance, a WhatsApp-ready reminder, settle up, split a bill, lend or borrow. Loans can have a pay-back date that turns red when overdue.
 - **Wealth:** net worth split into banks and cash, investments and money owed to you; savings goals with progress, where the money is kept, the plan and when it gets there; investments with gain or loss.
 - **New goal in four steps:** what it's for, how much and by when (12 to 48 months or any date), where it's kept (and whether the whole balance counts or only the deposits for it), and how you'll save (weekly, monthly or yearly, from another account, the cash deposit machine or by hand, recorded automatically if you like). A hint works out the monthly amount as you go.
-- **You:** Accounts & cards, Friends, Bank messages, Spending map, Reminders and This month (with the monthly report), plus Settings and Lock now.
+- **You:** Accounts & cards, Friends, Bank messages, Spending map, Reminders, This month (with the monthly report), My plan and Advisor, plus Settings and Lock now.
 - **Settings** in five groups: Security (Face ID, auto-lock, passcode), Automatic (Bank SMS setup, adding sure messages by itself, keeping balances matching the bank, repeating payments, reminders), Money (daily limit, budgets, categories, quick-add buttons, currencies and rates), Look (your name, language, Night / Day / Auto) and Your data (backup, restore, reports, privacy, demo data, erase).
 - **Lock screen:** a passcode of digits unlocks with a round keypad (6 or more digits; Masroof keeps only how many digits it has, never the digits). Any other passcode uses the keyboard, and you can switch between the two. A short "Opening your ledger" screen follows (tap the fort to stack coins while you wait, or anywhere else to skip).
 - **Credit cards:** add the limit, statement day and due day. Each card then shows its statement balance, what's left to pay, the due date, the minimum payment and your available credit.
@@ -96,6 +98,31 @@ Apple doesn't let any app read your text messages. Your iPhone's Shortcuts app c
 5. If your bank texts in Arabic, make a second automation with **Message Contains** `ر.ع`.
 
 Every bank SMS is now added to *iCloud Drive › Shortcuts › Masroof › bank-sms.txt*, even while Masroof is closed. In Masroof, open **Bank messages** (the card on Home, or You › Bank messages) and tap **Choose the bank SMS file**. The same steps are in the app, under **Settings › Bank SMS setup**.
+
+## My plan and the Advisor
+
+- **Your salary and lines.** Add your monthly salary and payday (your month runs payday to payday), then a line for each thing you want to keep an eye on: a whole category (Food, Entertainment, Groceries) or one item in it (Coffee, Fuel, Cinema, Rent). Each line is an amount **a day**, **a week** or **a month**. A daily line can have a different amount on **weekends** (you choose the weekend days; Friday and Saturday by default). *Use my usual* fills in what you normally spend.
+- **What's left today.** Home shows today's plan: what you can still spend across your daily lines, line by line. My plan shows each line's left today / this week / this month, how far ahead or over you are, and a marker for where you should be by now.
+- **Days even out.** Spend less one day and the extra moves to the days ahead; spend more (say coffee on a Sunday with nothing left) and it comes off the days ahead. This evens out over the month, or over the week if you prefer. Weekly lines such as fuel carry their unused money into later weeks of the month.
+- **Ways back when you go over.** When a line goes over, Masroof alerts you and offers ways back, each with a small before/after chart of your daily amounts:
+  - a little less every day until the end of the month
+  - back on track in one week, or in two weeks
+  - skip the line tomorrow or for a few days (or skip fuel for a week or two)
+  - use what other lines saved, or share it across your other daily lines
+  - skip entertainment for a few days to pay for it
+  - use salary your plan hasn't given out, or take it from savings (recorded as a transfer)
+  The chosen way shows its progress (day 3 of 7, on track or behind) and can be cancelled. If you don't choose, the overspend is simply spread over the days left.
+- **Your salary, split.** A ring shows where the salary goes: monthly lines, day to day, weekly, goals, loan payments and what isn't planned (what you can save). A chart compares spending so far with the plan and a forecast to payday, and shows what's left from the salary if you keep to the plan or keep your current pace.
+- **Each line in detail:** this month's running total against the plan and the forecast, day by day (or week by week) bars, your usual week by weekday, month by month with next month's likely amount, and the latest entries.
+- **Advisor:** learns from your months on the phone. It shows what you're likely to spend by payday (against a usual month), next month by category with how close last month's guess was, your week by weekday, your last six months against income, and what it noticed:
+  - weekends that cost more
+  - small things that add up (coffee 14 times this month, and what two fewer a week would save)
+  - categories heading above or below your usual
+  - what you cut or what went up since last month
+  - your most expensive weekday
+  - big categories with no plan, and how much of your income you kept
+- **Loans paid back monthly.** When you lend or borrow, choose *paid back monthly* with an amount and first date. The friend's page shows the schedule (paid, next, overdue), *Got payment* records the next one, and Coming up shows it.
+- Categories in your plan take their monthly budget from it, so This month, the PDF report and budget alerts all follow the plan.
 
 ## Several accounts: which one, and what it counts as
 
